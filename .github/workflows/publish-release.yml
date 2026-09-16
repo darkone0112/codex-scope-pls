@@ -2,17 +2,23 @@ name: Publish release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing v<package-version> tag to publish
-        required: true
+        description: Optional existing v<package-version> tag to publish
+        required: false
         type: string
 
 permissions:
   contents: write
+
+concurrency:
+  group: publish-release-${{ github.repository }}
+  cancel-in-progress: false
 
 jobs:
   package-and-release:
@@ -20,27 +26,73 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ inputs.tag || github.sha }}
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Verify the release tag matches package.json
+      - name: Plan the release
+        id: plan
         env:
-          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_TAG: ${{ inputs.tag }}
+          PUSHED_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          AUTOMATIC: ${{ github.ref_type == 'branch' && inputs.tag == '' }}
         run: |
-          version="$(node -p \"require('./package.json').version\")"
-          test "$RELEASE_TAG" = "v$version"
+          current_version="$(node -p "require('./package.json').version")"
+          release_version="$current_version"
+          auto_bump=false
+          publish=true
+          if [ -n "$REQUESTED_TAG" ]; then
+            test "$REQUESTED_TAG" = "v$current_version"
+          fi
+          if [ -n "$PUSHED_TAG" ]; then
+            test "$PUSHED_TAG" = "v$current_version"
+          fi
+          if [ "$AUTOMATIC" = "true" ] && gh release view "v$current_version" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            changed="$(git diff --name-only "v$current_version..HEAD" -- src package.json)"
+            if [ -z "$changed" ]; then
+              publish=false
+            else
+              prefix="${current_version%.*}"
+              patch="${current_version##*.}"
+              release_version="$prefix.$((patch + 1))"
+              auto_bump=true
+            fi
+          fi
+          echo "RELEASE_VERSION=$release_version" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=v$release_version" >> "$GITHUB_ENV"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "auto_bump=$auto_bump" >> "$GITHUB_OUTPUT"
+      - name: Check whether the release already exists
+        id: release_state
+        if: steps.plan.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Commit an automatic patch-version bump
+        if: steps.plan.outputs.auto_bump == 'true' && steps.release_state.outputs.publish == 'true'
+        run: |
+          node scripts/set-version.js "$RELEASE_VERSION"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package.json
+          git commit -m "chore: release v$RELEASE_VERSION"
+          git push origin HEAD:main
       - name: Test and package
+        if: steps.release_state.outputs.publish == 'true'
         run: |
           npm test
           npm run check
           npm run package
       - name: Publish VSIX to GitHub Releases
+        if: steps.release_state.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            exit 0
-          fi
-          gh release create "$RELEASE_TAG" codex-scope-pls-*.vsix --repo "$GITHUB_REPOSITORY" --title "$RELEASE_TAG" --generate-notes --verify-tag
+          gh release create "$RELEASE_TAG" codex-scope-pls-*.vsix --repo "$GITHUB_REPOSITORY" --title "$RELEASE_TAG" --generate-notes --target "$(git rev-parse HEAD)"
