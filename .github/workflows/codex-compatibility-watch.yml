@@ -1,0 +1,39 @@
+name: Codex compatibility watch
+
+on:
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  inspect-official-packages:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run local tests
+        run: npm test
+      - name: Inspect official Codex VSIX packages
+        run: node scripts/check-codex-compatibility.js --report "$RUNNER_TEMP/codex-compatibility.json"
+      - name: Add report to workflow summary
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/codex-compatibility.json.md" ]; then
+            cat "$RUNNER_TEMP/codex-compatibility.json.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Open one review issue for changed bundles
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if node -e 'process.exit(require(process.argv[1]).requiresReview ? 0 : 1)' "$RUNNER_TEMP/codex-compatibility.json"; then
+            open_count="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search 'Codex compatibility review required in:title' --json number --jq 'length')"
+            if [ "$open_count" = "0" ]; then
+              gh issue create --repo "$GITHUB_REPOSITORY" --title 'Codex compatibility review required' --body-file "$RUNNER_TEMP/codex-compatibility.json.md"
+            fi
+          fi

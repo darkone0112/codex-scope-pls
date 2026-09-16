@@ -1,0 +1,125 @@
+{
+  "name": "codex-scope-pls",
+  "displayName": "Codex Scope Pls",
+  "description": "Local, reversible workspace filtering for explicitly supported Codex extension builds.",
+  "version": "0.2.0",
+  "publisher": "local",
+  "license": "AGPL-3.0-only",
+  "engines": {
+    "vscode": "^1.96.2"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./src/extension.js",
+  "extensionKind": [
+    "workspace"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    },
+    "virtualWorkspaces": {
+      "supported": false
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check": "node scripts/check.js",
+    "check:compatibility": "node scripts/check-codex-compatibility.js",
+    "package": "npx --yes @vscode/vsce@3.6.2 package --no-dependencies --allow-missing-repository --out codex-scope-pls-0.2.0.vsix"
+  },
+  "contributes": {
+    "configuration": {
+      "title": "Codex Scope Pls",
+      "properties": {
+        "codexScopePls.mode": {
+          "type": "string",
+          "enum": [
+            "workspace",
+            "all"
+          ],
+          "default": "workspace",
+          "scope": "window",
+          "description": "Scope future thread/list requests to exact workspace roots, or preserve stock listing. Reload the window to clear Codex caches."
+        },
+        "codexScopePls.showCloudChats": {
+          "type": "boolean",
+          "default": false,
+          "scope": "application",
+          "description": "Show the signed-in account\u2019s cloud task list in every workspace. Off hides cloud list results, independently of local session mode. Reload all windows after changing."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "codexScopePls.workspace",
+        "title": "Use Current Workspace",
+        "category": "Codex Scope Pls"
+      },
+      {
+        "command": "codexScopePls.all",
+        "title": "Show All Sessions",
+        "category": "Codex Scope Pls"
+      },
+      {
+        "command": "codexScopePls.reapply",
+        "title": "Reapply Patch",
+        "category": "Codex Scope Pls"
+      },
+      {
+        "command": "codexScopePls.restore",
+        "title": "Restore Original Codex Extension",
+        "category": "Codex Scope Pls"
+      },
+      {
+        "command": "codexScopePls.diagnostics",
+        "title": "Show Diagnostics",
+        "category": "Codex Scope Pls"
+      },
+      {
+        "command": "codexScopePls.settings",
+        "title": "Filter Settings",
+        "category": "Codex Scope Pls",
+        "icon": "$(settings-gear)"
+      },
+      {
+        "command": "codexScopePls.toggleCloud",
+        "title": "Show Cloud Chats Everywhere",
+        "category": "Codex Scope Pls",
+        "toggled": "config.codexScopePls.showCloudChats"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "codexScopePls.settings",
+          "when": "view == chatgpt.sidebarView || view == chatgpt.sidebarSecondaryView",
+          "group": "navigation@100"
+        },
+        {
+          "command": "codexScopePls.workspace",
+          "when": "view == chatgpt.sidebarView || view == chatgpt.sidebarSecondaryView",
+          "group": "codexScopePls@1"
+        },
+        {
+          "command": "codexScopePls.all",
+          "when": "view == chatgpt.sidebarView || view == chatgpt.sidebarSecondaryView",
+          "group": "codexScopePls@2"
+        },
+        {
+          "command": "codexScopePls.toggleCloud",
+          "when": "view == chatgpt.sidebarView || view == chatgpt.sidebarSecondaryView",
+          "group": "codexScopePls@3"
+        }
+      ]
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/darkone0112/codex-scope-pls.git"
+  }
+}

@@ -1,0 +1,22 @@
+node_modules/
+*.vsix
+
+# Markdown is local project documentation; retain the repository README.
+*.md
+!README.md
+
+# Editor and operating-system files.
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local environment, logs, test output and temporary build artifacts.
+.env
+.env.*
+!.env.example
+*.log
+coverage/
+.nyc_output/
+.cache/
+*.tmp
+*.tgz
