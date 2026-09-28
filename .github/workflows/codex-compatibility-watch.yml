@@ -61,6 +61,7 @@ jobs:
             exit 0
           fi
           if git ls-remote --exit-code --heads origin "$branch" > /dev/null; then
+            gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$branch" --title "chore: review Codex $version compatibility" --body-file "$RUNNER_TEMP/codex-compatibility.json.md"
             exit 0
           fi
           git switch -c "$branch"
