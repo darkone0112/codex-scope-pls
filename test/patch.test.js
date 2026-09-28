@@ -14,7 +14,7 @@ async function fixture(t) {
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   const target = path.join(directory, 'extension.js');
   const original = await fs.readFile(path.join(__dirname, 'fixtures/provider.js'));
-  const definition = { ...definitions[0], version: '99.1.1', originalHash: sha256(original) };
+  const definition = { ...definitions[0].bundles[0], version: '99.1.1', originalHash: sha256(original) };
   await fs.writeFile(target, original);
   return { target, original, definition };
 }
@@ -23,7 +23,7 @@ test('SHA-256 known vector and unsupported profile/build refusal', async t => {
   assert.throws(() => selectDefinition('future', 'linux', 'x64', definitions), /Invalid/);
   assert.throws(() => selectDefinition('99.1.1', 'freebsd', 'x64', definitions), /Unsupported/);
   const f = await fixture(t);
-  await assert.rejects(change(f.target, definitions[0], 'apply'));
+  await assert.rejects(change(f.target, definitions[0].bundles[0], 'apply'));
   assert.deepEqual(await fs.readFile(f.target), f.original);
 });
 test('exact-one match, missing and duplicated boundary refuse even with matching hash', async t => {

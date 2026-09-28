@@ -5,7 +5,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 const definitions = require('../src/patch/definitions');
-const { selectDefinition, sha256, transform } = require('../src/patch/integrity');
+const { selectDefinition, selectBundle, sha256, transform } = require('../src/patch/integrity');
 const { change } = require('../src/patch/patcher');
 const { codexScopePlsFilter } = require('../src/workspaceScope');
 const { locate } = require('../src/codexLocator');
@@ -17,13 +17,17 @@ const expectedProfiles = [
 test('only reviewed platform profiles are allowlisted; the exact bundle hash decides compatibility', () => {
   assert.deepEqual(definitions.map(d => `${d.platform}/${d.arch}`), expectedProfiles);
   for (const d of definitions) {
-    const reviewed = selectDefinition('26.908.40401', d.platform, d.arch, definitions);
-    assert.equal(reviewed.knownVersion, true);
-    assert.equal(reviewed.version, '26.908.40401');
-    const unlisted = selectDefinition('99.1.1-preview.1', d.platform, d.arch, definitions);
+    for (const bundle of d.bundles) {
+      const reviewed = selectBundle(selectDefinition(bundle.reviewedVersions[0], d.platform, d.arch, definitions), bundle.originalHash);
+      assert.equal(reviewed.knownVersion, true);
+      assert.equal(reviewed.version, bundle.reviewedVersions[0]);
+      const legacyPatch = selectBundle(selectDefinition(bundle.reviewedVersions[0], d.platform, d.arch, definitions), bundle.currentPatchedHashes[0]);
+      assert.equal(legacyPatch.originalHash, bundle.originalHash);
+    }
+    const unlisted = selectBundle(selectDefinition('99.1.1-preview.1', d.platform, d.arch, definitions), d.bundles[0].originalHash);
     assert.equal(unlisted.knownVersion, false);
     assert.equal(unlisted.version, '99.1.1-preview.1');
-    assert.equal(d.originalHash, '820691c93be40e73f0929b633cddc694b41775050cd72283faba283e53941f4f');
+    assert.equal(d.bundles[0].originalHash, '820691c93be40e73f0929b633cddc694b41775050cd72283faba283e53941f4f');
     assert.throws(() => selectDefinition('99.1.1', d.platform, d.arch, [...definitions, d]), /Unsupported/);
   }
   assert.throws(() => selectDefinition('unsafe/name', 'linux', 'x64', definitions), /Invalid/);
@@ -44,13 +48,14 @@ test('an unlisted version is accepted only with an exact reviewed original or pa
     extensions: { getExtension: () => ({ extensionPath: directory, packageJSON: { version: '99.1.1-preview.1' } }) },
     workspace: { workspaceFolders: [], getConfiguration: () => ({ get: () => undefined }) }
   };
-  const profile = { ...definitions[0], originalHash: sha256(original), currentPatchedHashes: [], previousPatchedHashes: [] };
-  profile.currentPatchedHashes = [sha256(transform(original, profile))];
+  const bundle = { ...definitions[0].bundles[0], originalHash: sha256(original), currentPatchedHashes: [], previousPatchedHashes: [] };
+  bundle.currentPatchedHashes = [sha256(transform(original, bundle))];
+  const profile = { ...definitions[0], bundles: [bundle] };
   const located = await locate(vscode, false, [profile]);
   assert.equal(located.target, path.join(await fs.realpath(directory), 'out/extension.js'));
   assert.equal(located.definition.knownVersion, false);
   await fs.writeFile(target, transform(original, located.definition));
-  assert.equal((await locate(vscode, false, [profile])).currentHash, located.definition.currentPatchedHashes[0]);
+  assert.equal((await locate(vscode, false, [profile])).currentHash, bundle.currentPatchedHashes[0]);
   await fs.writeFile(target, Buffer.concat([original, Buffer.from('x')]));
   await assert.rejects(locate(vscode, false, [profile]), /Unsupported Codex bundle SHA-256/);
 });
@@ -63,9 +68,9 @@ for (const d of definitions) test(`${d.platform}/${d.arch}: fixture apply/restor
   const original = await fs.readFile(path.join(__dirname, 'fixtures/provider.js'));
   await fs.writeFile(target, original);
   // Production profiles must refuse this synthetic bundle on every platform.
-  await assert.rejects(change(target, { ...d, version: '99.1.1' }, 'apply'));
+  await assert.rejects(change(target, { ...d.bundles[0], version: '99.1.1' }, 'apply'));
   assert.deepEqual(await fs.readFile(target), original);
-  const fixtureDefinition = { ...d, version: '99.1.1', originalHash: sha256(original) };
+  const fixtureDefinition = { ...d.bundles[0], version: '99.1.1', originalHash: sha256(original) };
   await fs.chmod(target, 0o640);
   await change(target, fixtureDefinition, 'apply');
   assert.equal((await fs.stat(target)).mode & 0o777, 0o640);

@@ -6,7 +6,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const definitions = require('../src/patch/definitions');
-const { sha256, transform } = require('../src/patch/integrity');
+const { sha256, count, transform } = require('../src/patch/integrity');
+const { buildPoints } = require('../src/patch/pointBuilder');
 
 const GALLERY_QUERY = 'https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery';
 // Codex archives embed a native executable for each host and can be large.
@@ -69,7 +70,10 @@ function verifyManifest(bytes, version, targetPlatform) {
 function latestVersion(versions, targetPlatform) {
   const candidates = versions.filter(version => version.targetPlatform === targetPlatform &&
     typeof version.version === 'string' && /^\d[0-9A-Za-z.-]*$/.test(version.version));
-  candidates.sort((left, right) => right.version.localeCompare(left.version, undefined, { numeric: true }));
+  candidates.sort((left, right) => {
+    const byUpdateTime = Date.parse(right.lastUpdated || 0) - Date.parse(left.lastUpdated || 0);
+    return byUpdateTime || right.version.localeCompare(left.version, undefined, { numeric: true });
+  });
   return candidates[0];
 }
 function vsixUrl(version) {
@@ -77,16 +81,39 @@ function vsixUrl(version) {
   if (!asset?.source) throw new Error('Marketplace response has no VSIX asset');
   return asset.source;
 }
+function deriveBundle(bytes, version) {
+  const text = bytes.toString('utf8');
+  if (!Buffer.from(text).equals(bytes) || text.includes('codex-scope-pls:')) throw new Error('Bundle is not a pristine UTF-8 target');
+  const localToken = 'sendProviderRequest(e,r,n,o,i,s){';
+  if (count(text, localToken) !== 1) throw new Error('Expected exactly one local request boundary');
+  const localStart = text.indexOf(localToken);
+  const localText = text.slice(localStart);
+  const firstVariable = /^sendProviderRequest\(e,r,n,o,i,s\)\{let ([A-Za-z_$][\w$]*)=/.exec(localText)?.[1];
+  const requestObject = /let ([A-Za-z_$][\w$]*)=\{id:([A-Za-z_$][\w$]*),method:n,params:o\};/g;
+  const matches = [];
+  for (let match; (match = requestObject.exec(localText));) {
+    if (match[2] === firstVariable) matches.push(match);
+  }
+  if (!firstVariable || matches.length !== 1) throw new Error('Expected exactly one local request object');
+  const localBefore = localText.slice(0, matches[0].index + matches[0][0].length);
+  const cloudBefore = 'async fetchHttp(e,r,n){try{';
+  if (count(text, cloudBefore) !== 1) throw new Error('Expected exactly one cloud HTTP boundary');
+  const candidate = { reviewedVersions: [version], originalHash: sha256(bytes), currentPatchedHashes: [],
+    previousPatchedHashes: [], localBefore, cloudBefore };
+  const patched = transform(bytes, { ...candidate, points: buildPoints(localBefore, cloudBefore) });
+  candidate.currentPatchedHashes = [sha256(patched)];
+  return { candidate, patched };
+}
 function assessBundle(profile, bytes) {
   const hash = sha256(bytes);
-  if (hash === profile.originalHash) return { status: 'reviewed-original', hash };
-  if ([...(profile.currentPatchedHashes || []), ...(profile.previousPatchedHashes || [])].includes(hash)) {
+  const originals = profile.bundles.filter(bundle => hash === bundle.originalHash);
+  if (originals.length === 1) return { status: 'reviewed-original', hash };
+  if (profile.bundles.some(bundle => [...bundle.currentPatchedHashes, ...bundle.previousPatchedHashes].includes(hash))) {
     return { status: 'unexpected-patched-bytes', hash };
   }
-  const candidate = { ...profile, originalHash: hash };
   try {
-    const patched = transform(bytes, candidate);
-    return { status: 'structurally-compatible-review-required', hash, patched };
+    const { candidate, patched } = deriveBundle(bytes, 'unreviewed');
+    return { status: 'structurally-compatible-review-required', hash, patched, candidate };
   } catch (error) {
     return { status: 'incompatible-review-required', hash, reason: error.message };
   }
@@ -134,9 +161,22 @@ async function inspectMarketplace() {
       const assessed = assessBundle(profile, unzip(archive, 'extension/out/extension.js'));
       if (assessed.patched) syntaxCheck(assessed.patched);
       results.push({ profile: profileKey(profile), targetPlatform, version: version.version,
-        status: assessed.status, hash: assessed.hash, reason: assessed.reason });
+        status: assessed.status, hash: assessed.hash, reason: assessed.reason, candidate: assessed.candidate });
     }
-    const report = { checkedAt: new Date().toISOString(), results };
+    const proposals = results.filter(result => result.candidate).map(result => ({
+      ...result.candidate, reviewedVersions: [result.version]
+    }));
+    // Marketplace versions can roll out at different times for host platforms.
+    // A proposal is safe when every bundle has the same bytes and exact patch
+    // points; record every observed version label once that is established.
+    const proposalKey = ({ reviewedVersions, ...proposal }) => JSON.stringify(proposal);
+    const consistentProposal = proposals.length === results.length && proposals.every(proposal =>
+      proposalKey(proposal) === proposalKey(proposals[0]));
+    const proposal = consistentProposal ? {
+      ...proposals[0], reviewedVersions: [...new Set(proposals.flatMap(item => item.reviewedVersions))]
+    } : undefined;
+    const report = { checkedAt: new Date().toISOString(), results: results.map(({ candidate, ...result }) => result),
+      proposal };
     report.requiresReview = results.some(result => result.status !== 'reviewed-original');
     return report;
   } finally {
@@ -150,7 +190,11 @@ async function main() {
     await fs.writeFile(process.argv[output + 1], JSON.stringify(report, null, 2));
     await fs.writeFile(`${process.argv[output + 1]}.md`, reportMarkdown(report));
   }
+  const proposal = process.argv.indexOf('--proposal');
+  if (report.proposal && proposal !== -1 && process.argv[proposal + 1]) {
+    await fs.writeFile(process.argv[proposal + 1], JSON.stringify(report.proposal, null, 2));
+  }
   process.stdout.write(`${JSON.stringify(report)}\n`);
 }
 if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });
-module.exports = { assessBundle, reportMarkdown, verifyManifest };
+module.exports = { assessBundle, deriveBundle, reportMarkdown, verifyManifest };

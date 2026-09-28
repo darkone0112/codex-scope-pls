@@ -28,7 +28,14 @@ function selectDefinition(version, platform, arch, definitions) {
   const matches = definitions.filter(d => d.platform === platform && d.arch === arch);
   if (matches.length !== 1) throw new Error('Unsupported Codex platform/architecture');
   // Record the installed version for diagnostics and backup identity. The
-  // profile's full-bundle hash, checked by codexLocator, decides compatibility.
-  return { ...matches[0], version, knownVersion: matches[0].reviewedVersions.includes(version) };
+  // bundle variant is selected from its full-file hash by codexLocator.
+  return { ...matches[0], version };
 }
-module.exports = { sha256, count, transform, selectDefinition };
+function selectBundle(profile, hash) {
+  const matches = profile.bundles.filter(bundle => [bundle.originalHash, ...bundle.currentPatchedHashes,
+    ...bundle.previousPatchedHashes].includes(hash));
+  if (matches.length !== 1) throw new Error('Unsupported Codex bundle SHA-256');
+  const bundle = matches[0];
+  return { ...profile, ...bundle, version: profile.version, knownVersion: bundle.reviewedVersions.includes(profile.version) };
+}
+module.exports = { sha256, count, transform, selectDefinition, selectBundle };

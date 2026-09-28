@@ -1,0 +1,10 @@
+[
+  {
+    "reviewedVersions": ["26.908.31748", "26.908.40401", "26.5908.31748"],
+    "originalHash": "820691c93be40e73f0929b633cddc694b41775050cd72283faba283e53941f4f",
+    "currentPatchedHashes": ["588f20d88043b33d18ac0e70da4795c3b82b56c0e815985bfdf7a6f164558042"],
+    "previousPatchedHashes": ["b7b9d97fc118e2d6947ec90178c4623afecbd1d5c0b6037e21574ba22b98d33f"],
+    "localBefore": "sendProviderRequest(e,r,n,o,i,s){let a=`${e}:${r}`;s&&oG(n)&&this.providers.get(e)?.onRequestDelivery!=null&&this.pendingRequests.set(a,{providerName:e,requestId:r,method:n}),i&&this.pendingPrewarmedThreadStartRequestIds.add(a);let c={id:a,method:n,params:o};",
+    "cloudBefore": "async fetchHttp(e,r,n){try{let o=pPe(r.url),"
+  }
+]

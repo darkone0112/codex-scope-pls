@@ -49,15 +49,15 @@ jobs:
           if [ -n "$PUSHED_TAG" ]; then
             test "$PUSHED_TAG" = "v$current_version"
           fi
-          if [ "$AUTOMATIC" = "true" ] && gh release view "v$current_version" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+          if [ "$AUTOMATIC" = "true" ] && git rev-parse --verify --quiet "v$current_version" > /dev/null; then
             changed="$(git diff --name-only "v$current_version..HEAD" -- src package.json)"
-            if [ -z "$changed" ]; then
-              publish=false
-            else
+            if [ -n "$changed" ]; then
               prefix="${current_version%.*}"
               patch="${current_version##*.}"
               release_version="$prefix.$((patch + 1))"
               auto_bump=true
+            elif gh release view "v$current_version" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+              publish=false
             fi
           fi
           echo "RELEASE_VERSION=$release_version" >> "$GITHUB_ENV"

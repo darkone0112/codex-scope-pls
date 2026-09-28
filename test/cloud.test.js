@@ -32,7 +32,7 @@ test('cloud filter never inspects headers/body or intercepts details, mutations,
 });
 test('patched HTTP boundary returns empty items without entering stock transport; opt-in passes through', async () => {
   const original = await fs.readFile(path.join(__dirname, 'fixtures/provider.js'));
-  const definition = { ...definitions[0], originalHash: sha256(original) };
+  const definition = { ...definitions[0].bundles[0], originalHash: sha256(original) };
   let show = false;
   let forwarded = 0;
   const context = { module: { exports: {} }, Response,
