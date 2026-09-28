@@ -1,10 +1,30 @@
 [
   {
-    "reviewedVersions": ["26.908.31748", "26.908.40401", "26.5908.31748"],
+    "reviewedVersions": [
+      "26.908.31748",
+      "26.908.40401",
+      "26.5908.31748"
+    ],
     "originalHash": "820691c93be40e73f0929b633cddc694b41775050cd72283faba283e53941f4f",
-    "currentPatchedHashes": ["588f20d88043b33d18ac0e70da4795c3b82b56c0e815985bfdf7a6f164558042"],
-    "previousPatchedHashes": ["b7b9d97fc118e2d6947ec90178c4623afecbd1d5c0b6037e21574ba22b98d33f"],
+    "currentPatchedHashes": [
+      "588f20d88043b33d18ac0e70da4795c3b82b56c0e815985bfdf7a6f164558042"
+    ],
+    "previousPatchedHashes": [
+      "b7b9d97fc118e2d6947ec90178c4623afecbd1d5c0b6037e21574ba22b98d33f"
+    ],
     "localBefore": "sendProviderRequest(e,r,n,o,i,s){let a=`${e}:${r}`;s&&oG(n)&&this.providers.get(e)?.onRequestDelivery!=null&&this.pendingRequests.set(a,{providerName:e,requestId:r,method:n}),i&&this.pendingPrewarmedThreadStartRequestIds.add(a);let c={id:a,method:n,params:o};",
     "cloudBefore": "async fetchHttp(e,r,n){try{let o=pPe(r.url),"
+  },
+  {
+    "reviewedVersions": [
+      "26.5917.62051"
+    ],
+    "originalHash": "7ba6208c447c393e050a8ba46893e9e1aa4abd718cb4a8610fa87b12942633bc",
+    "currentPatchedHashes": [
+      "750df1829ea3087af17a083ea73357867d329ee0ce1df81038f2d0916495d720"
+    ],
+    "previousPatchedHashes": [],
+    "localBefore": "sendProviderRequest(e,r,n,o,i,s){let a=`${e}:${r}`;s&&E$(n)&&this.providers.get(e)?.onRequestDelivery!=null&&this.pendingRequests.set(a,{providerName:e,requestId:r,method:n}),i&&this.pendingPrewarmedThreadStartRequestIds.add(a);let u={id:a,method:n,params:o};",
+    "cloudBefore": "async fetchHttp(e,r,n){try{"
   }
 ]
