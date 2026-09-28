@@ -2,7 +2,7 @@
   "name": "codex-scope-pls",
   "displayName": "Codex Scope Pls",
   "description": "Local, reversible workspace filtering for explicitly supported Codex extension builds.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "local",
   "license": "AGPL-3.0-only",
   "engines": {
@@ -50,7 +50,7 @@
           "type": "boolean",
           "default": false,
           "scope": "application",
-          "description": "Show the signed-in account\u2019s cloud task list in every workspace. Off hides cloud list results, independently of local session mode. Reload all windows after changing."
+          "description": "Show the signed-in account’s cloud task list in every workspace. Off hides cloud list results, independently of local session mode. Reload all windows after changing."
         }
       }
     },
