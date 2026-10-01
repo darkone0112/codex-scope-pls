@@ -27,6 +27,7 @@
     }
   },
   "scripts": {
+    "vscode:uninstall": "node ./src/uninstall.js",
     "test": "node --test test/*.test.js",
     "check": "node scripts/check.js",
     "check:compatibility": "node scripts/check-codex-compatibility.js",

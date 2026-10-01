@@ -9,6 +9,7 @@ const definitions = require('../src/patch/definitions');
 const { sha256, transform, selectDefinition } = require('../src/patch/integrity');
 const { backupPath, readBackup } = require('../src/patch/backup');
 const { change, inspect } = require('../src/patch/patcher');
+const { patchedTargets, restoreInstalled } = require('../src/uninstall');
 async function fixture(t) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-scope-test-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
@@ -151,4 +152,26 @@ test('each patch point must match exactly once even if the others match', async 
       assert.throws(() => transform(malformed, { ...definition, originalHash: sha256(malformed) }), /exactly one/);
     }
   }
+});
+test('uninstall cleanup restores only an exact supported patched sibling bundle', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-uninstall-test-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const original = await fs.readFile(path.join(__dirname, 'fixtures/provider.js'));
+  const bundle = { ...definitions[0].bundles[0], originalHash: sha256(original), currentPatchedHashes: [], previousPatchedHashes: [] };
+  bundle.currentPatchedHashes = [sha256(transform(original, bundle))];
+  const profile = { ...definitions[0], bundles: [bundle] };
+  const root = path.join(directory, 'openai.chatgpt-99.1.1');
+  const target = path.join(root, 'out/extension.js');
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'chatgpt', publisher: 'openai', version: '99.1.1' }));
+  await fs.writeFile(target, original);
+  const definition = { ...bundle, version: '99.1.1' };
+  await change(target, definition, 'apply');
+  await fs.mkdir(path.join(directory, 'openai.chatgpt-untrusted'));
+  await fs.writeFile(path.join(directory, 'openai.chatgpt-untrusted/package.json'), JSON.stringify({ name: 'chatgpt', publisher: 'elsewhere', version: '99.1.1' }));
+  assert.equal((await patchedTargets(directory, [profile])).length, 1);
+  const results = await restoreInstalled(directory, [profile]);
+  assert.deepEqual(results.map(result => result.changed), [true]);
+  assert.deepEqual(await fs.readFile(target), original);
+  assert.deepEqual(await restoreInstalled(directory, [profile]), []);
 });

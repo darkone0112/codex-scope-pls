@@ -14,6 +14,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: write
   contents: write
   issues: write
   pull-requests: write
@@ -42,7 +43,7 @@ jobs:
           if [ -f "$RUNNER_TEMP/codex-compatibility.json.md" ]; then
             cat "$RUNNER_TEMP/codex-compatibility.json.md" >> "$GITHUB_STEP_SUMMARY"
           fi
-      - name: Open a compatibility review pull request
+      - name: Create and merge a verified compatibility pull request
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -56,21 +57,30 @@ jobs:
           hash="$(node -p "require(process.argv[1]).originalHash" "$proposal")"
           version="$(node -p "require(process.argv[1]).reviewedVersions[0]" "$proposal")"
           branch="automation/codex-bundle-${hash:0:12}"
-          existing="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$branch" --state all --json number --jq 'length')"
-          if [ "$existing" != "0" ]; then
-            exit 0
+          open_count="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$branch" --state open --json number --jq 'length')"
+          if [ "$open_count" = "0" ]; then
+            previous_count="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$branch" --state all --json number --jq 'length')"
+            if [ "$previous_count" != "0" ]; then
+              exit 0
+            fi
+            if git ls-remote --exit-code --heads origin "$branch" > /dev/null; then
+              gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$branch" --title "chore: review Codex $version compatibility" --body-file "$RUNNER_TEMP/codex-compatibility.json.md"
+            else
+              git switch -c "$branch"
+              git config user.name 'github-actions[bot]'
+              git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+              git add src/patch/bundles.json
+              git commit -m "chore: review Codex $version compatibility"
+              git push --set-upstream origin "$branch"
+              gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$branch" --title "chore: review Codex $version compatibility" --body-file "$RUNNER_TEMP/codex-compatibility.json.md"
+            fi
           fi
-          if git ls-remote --exit-code --heads origin "$branch" > /dev/null; then
-            gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$branch" --title "chore: review Codex $version compatibility" --body-file "$RUNNER_TEMP/codex-compatibility.json.md"
-            exit 0
-          fi
-          git switch -c "$branch"
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/patch/bundles.json
-          git commit -m "chore: review Codex $version compatibility"
-          git push --set-upstream origin "$branch"
-          gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$branch" --title "chore: review Codex $version compatibility" --body-file "$RUNNER_TEMP/codex-compatibility.json.md"
+          git switch main
+          gh pr merge "$branch" --repo "$GITHUB_REPOSITORY" --merge --delete-branch
+          # A merge authenticated with GITHUB_TOKEN does not emit a push run.
+          # workflow_dispatch is the supported exception and keeps release
+          # packaging in the existing release workflow.
+          gh workflow run publish-release.yml --repo "$GITHUB_REPOSITORY" --ref main
       - name: Open one review issue for incompatible bundles
         env:
           GH_TOKEN: ${{ github.token }}
