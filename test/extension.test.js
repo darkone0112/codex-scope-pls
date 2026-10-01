@@ -12,6 +12,8 @@ test('activation, mode commands, persistent restore and explicit reapply', async
   const updates = [];
   const subscriptions = [];
   const executed = [];
+  let extensionChange;
+  let selfExtensionPresent = true;
   let showCloudChats = false;
   const disposable = { dispose() {} };
   const vscode = {
@@ -27,7 +29,10 @@ test('activation, mode commands, persistent restore and explicit reapply', async
       onDidChangeConfiguration: () => disposable,
       onDidChangeWorkspaceFolders: () => disposable
     },
-    extensions: { onDidChange: () => disposable },
+    extensions: {
+      getExtension: id => id === 'local.codex-scope-pls' && selfExtensionPresent ? {} : undefined,
+      onDidChange: callback => { extensionChange = callback; return disposable; }
+    },
     commands: { executeCommand: async (...args) => executed.push(args), registerCommand: (id, callback) => { commands.set(id, callback); return disposable; } }
   };
   const context = { subscriptions, globalState: {
@@ -61,4 +66,9 @@ test('activation, mode commands, persistent restore and explicit reapply', async
   await commands.get('codexScopePls.reapply')();
   assert.equal(state.get('autoApply'), true);
   assert.deepEqual(operations, ['apply', 'restore', 'apply']);
+  selfExtensionPresent = false;
+  extensionChange();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(operations, ['apply', 'restore', 'apply', 'restore']);
+  assert.deepEqual(executed.at(-1), ['workbench.action.reloadWindow']);
 });

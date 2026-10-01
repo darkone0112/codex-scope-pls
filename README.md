@@ -283,7 +283,7 @@ Codex Scope Pls: Restore Original Codex Extension
 
 No Codex session files are touched during patching or restoration.
 
-Uninstalling Codex Scope Pls also restores a supported patched Codex bundle automatically when VS Code finalizes the uninstall on its next restart. That removes both workspace session filtering and cloud-chat hiding: those behaviors live only in the restored bundle. The cleanup hook verifies the exact bundle hash and its original backup before changing anything; an unknown or damaged bundle is left untouched rather than guessed at. Use **Restore Original Codex Extension** first if you need immediate restoration without uninstalling.
+Disabling or uninstalling Codex Scope Pls restores a supported patched Codex bundle automatically and reloads the affected VS Code window. The uninstall hook is a second cleanup path when VS Code finalizes removal on restart. This removes both workspace session filtering and cloud-chat hiding: those behaviors live only in the restored bundle. Every cleanup path verifies the exact bundle hash and its original backup before changing anything; an unknown or damaged bundle is left untouched rather than guessed at.
 
 ## Fail closed
 

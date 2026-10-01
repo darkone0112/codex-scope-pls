@@ -21,12 +21,12 @@ function activate(context) {
     const choice = await vscode.window.showInformationMessage(message, 'Reload Window');
     if (choice === 'Reload Window') await vscode.commands.executeCommand('workbench.action.reloadWindow');
   }
-  async function patch(action) {
+  async function patch(action, reload = true) {
     const { target, definition } = await locate(vscode, action === 'restore');
     const result = await change(target, definition, action);
     lastResult = `${action}: ${result.changed ? 'file replaced' : 'already in requested state'}`;
     output.appendLine(lastResult);
-    if (result.changed) void reloadNotice('Codex Scope Pls: reload every window using this Codex installation to load the changed bundle.');
+    if (result.changed && reload) void reloadNotice('Codex Scope Pls: reload every window using this Codex installation to load the changed bundle.');
   }
   function command(name, task) {
     context.subscriptions.push(vscode.commands.registerCommand(`codexScopePls.${name}`, () => serial(task)));
@@ -63,7 +63,17 @@ function activate(context) {
     void reloadNotice('Codex Scope Pls: workspace roots changed. Reload to clear cached Codex lists and pagination.');
   }));
   context.subscriptions.push(vscode.extensions.onDidChange(() => {
-    if (context.globalState.get('autoApply', true)) void serial(() => patch('apply'));
+    void serial(async () => {
+      // This event fires for disable and uninstall while this extension host is
+      // still alive. Deactivation alone is unsuitable: it also runs on every
+      // ordinary VS Code shutdown, where the shared patch must persist.
+      if (!vscode.extensions.getExtension('local.codex-scope-pls')) {
+        await patch('restore', false);
+        await vscode.commands.executeCommand('workbench.action.reloadWindow');
+      } else if (context.globalState.get('autoApply', true)) {
+        await patch('apply');
+      }
+    });
   }));
   if (context.globalState.get('autoApply', true)) void serial(() => patch('apply'));
 }
