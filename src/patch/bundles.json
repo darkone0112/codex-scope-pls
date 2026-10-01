@@ -26,5 +26,17 @@
     "previousPatchedHashes": [],
     "localBefore": "sendProviderRequest(e,r,n,o,i,s){let a=`${e}:${r}`;s&&E$(n)&&this.providers.get(e)?.onRequestDelivery!=null&&this.pendingRequests.set(a,{providerName:e,requestId:r,method:n}),i&&this.pendingPrewarmedThreadStartRequestIds.add(a);let u={id:a,method:n,params:o};",
     "cloudBefore": "async fetchHttp(e,r,n){try{"
+  },
+  {
+    "reviewedVersions": [
+      "26.5928.31416"
+    ],
+    "originalHash": "550b03e76ac5a83cb25788aa3240ba445d0e7c7d4e76af8331442687529617ef",
+    "currentPatchedHashes": [
+      "831ce15e62cc177832236642fada04e9afcf3ad3f54262626cb4e541f304365e"
+    ],
+    "previousPatchedHashes": [],
+    "localBefore": "sendProviderRequest(e,r,n,o,i,s){let a=`${e}:${r}`;s&&f4(n)&&this.providers.get(e)?.onRequestDelivery!=null&&this.pendingRequests.set(a,{providerName:e,requestId:r,method:n}),i&&this.pendingPrewarmedThreadStartRequestIds.add(a);let u={id:a,method:n,params:o};",
+    "cloudBefore": "async fetchHttp(e,r,n){try{"
   }
 ]
