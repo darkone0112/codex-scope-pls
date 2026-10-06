@@ -42,24 +42,67 @@ async function replaceAtomically(target, expected, content) {
   }
 }
 
-async function change(target, definition, action) {
+async function changeAll(targets, action) {
   if (!['apply', 'restore'].includes(action)) throw new Error('Invalid patch operation');
-  const lock = `${target}.codex-scope-pls.lock`;
-  const handle = await fs.open(lock, 'wx', 0o600);
+  if (!targets.length || new Set(targets.map(item => item.target)).size !== targets.length) {
+    throw new Error('Invalid patch targets');
+  }
+  const locks = [];
+  const replaced = [];
   try {
-    const state = await inspect(target, definition);
-    if (action === 'apply') {
-      await ensureBackup(target, definition, state.original);
-      if (!state.isCurrentPatch) await replaceAtomically(target, state.current, state.patched);
-    } else if (state.isPatched) {
-      await readBackup(target, definition);
-      await replaceAtomically(target, state.current, state.original);
+    // Hold every target lock until the complete operation ends. The host target
+    // is always first, so separate windows acquire these in the same order.
+    for (const { target } of targets) {
+      const lock = `${target}.codex-scope-pls.lock`;
+      const handle = await fs.open(lock, 'wx', 0o600);
+      locks.push({ lock, handle });
     }
-    return { changed: action === 'apply' ? !state.isCurrentPatch : state.isPatched,
-      isPatched: action === 'apply', originalHash: definition.originalHash, points: state.points };
+    const prepared = [];
+    for (const { target, definition } of targets) {
+      prepared.push({ target, definition, state: await inspect(target, definition) });
+    }
+    // No target changes until every input and necessary backup is verified.
+    for (const { target, definition, state } of prepared) {
+      if (action === 'apply' && !state.patched.equals(state.original)) {
+        await ensureBackup(target, definition, state.original);
+      }
+      else if (state.isPatched) await readBackup(target, definition);
+    }
+    for (const { target, state } of prepared) {
+      if (!(await readRegular(target)).equals(state.current)) throw new Error('Target changed during operation');
+    }
+    // Upgrade replaces known prior revisions, including the retired submission
+    // asset, before applying display points. Restore reverses target order.
+    const order = action === 'apply' ? prepared : [...prepared].reverse();
+    for (const item of order) {
+      const content = action === 'apply' ? item.state.patched : item.state.original;
+      if (!content.equals(item.state.current)) {
+        // Record before replacement: rename may succeed before directory fsync fails.
+        replaced.push({ ...item, content });
+        await replaceAtomically(item.target, item.state.current, content);
+      }
+    }
+    return prepared.map(({ definition, state }) => ({
+      changed: action === 'apply' ? !state.patched.equals(state.current) : state.isPatched,
+      isPatched: action === 'apply' ? !state.patched.equals(state.original) : false,
+      originalHash: definition.originalHash, points: state.points
+    }));
+  } catch (error) {
+    for (const { target, state, content } of replaced.reverse()) {
+      const current = await readRegular(target);
+      if (current.equals(state.current)) continue;
+      if (!current.equals(content)) throw new Error('Patch failed; target changed before rollback');
+      try { await replaceAtomically(target, content, state.current); }
+      catch { throw new Error('Patch failed; rollback could not restore all targets'); }
+    }
+    throw error;
   } finally {
-    await handle.close();
-    await fs.unlink(lock);
+    for (const { lock, handle } of locks.reverse()) {
+      try { await handle.close(); } finally { await fs.unlink(lock); }
+    }
   }
 }
-module.exports = { inspect, change };
+async function change(target, definition, action) {
+  return (await changeAll([{ target, definition }], action))[0];
+}
+module.exports = { inspect, change, changeAll };

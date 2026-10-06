@@ -13,7 +13,8 @@
       "b7b9d97fc118e2d6947ec90178c4623afecbd1d5c0b6037e21574ba22b98d33f"
     ],
     "localBefore": "sendProviderRequest(e,r,n,o,i,s){let a=`${e}:${r}`;s&&oG(n)&&this.providers.get(e)?.onRequestDelivery!=null&&this.pendingRequests.set(a,{providerName:e,requestId:r,method:n}),i&&this.pendingPrewarmedThreadStartRequestIds.add(a);let c={id:a,method:n,params:o};",
-    "cloudBefore": "async fetchHttp(e,r,n){try{let o=pPe(r.url),"
+    "cloudBefore": "async fetchHttp(e,r,n){try{let o=pPe(r.url),",
+    "restoreOnly": true
   },
   {
     "reviewedVersions": [
@@ -25,7 +26,8 @@
     ],
     "previousPatchedHashes": [],
     "localBefore": "sendProviderRequest(e,r,n,o,i,s){let a=`${e}:${r}`;s&&E$(n)&&this.providers.get(e)?.onRequestDelivery!=null&&this.pendingRequests.set(a,{providerName:e,requestId:r,method:n}),i&&this.pendingPrewarmedThreadStartRequestIds.add(a);let u={id:a,method:n,params:o};",
-    "cloudBefore": "async fetchHttp(e,r,n){try{"
+    "cloudBefore": "async fetchHttp(e,r,n){try{",
+    "restoreOnly": true
   },
   {
     "reviewedVersions": [
@@ -33,11 +35,60 @@
     ],
     "originalHash": "550b03e76ac5a83cb25788aa3240ba445d0e7c7d4e76af8331442687529617ef",
     "currentPatchedHashes": [
-      "831ce15e62cc177832236642fada04e9afcf3ad3f54262626cb4e541f304365e"
+      "b08fa402734d5fb3f972d4e5c62e74bf43f132c0589802fb3810a483bee201dd"
     ],
-    "previousPatchedHashes": [],
+    "previousPatchedHashes": [
+      "831ce15e62cc177832236642fada04e9afcf3ad3f54262626cb4e541f304365e",
+      "768040f08eef0a5b5b3465cc9fa50c58bb5270e1dd70012038024158001c2161",
+      "44f5505551c2ffd89dcbf9ec1d0528ae49aed2f88c060e6bb8bd069043f3bd71",
+      "1b351a153e82a450e6198455a66766add3cff3156deb4aa4a1e1fef92e18dff6"
+    ],
     "localBefore": "sendProviderRequest(e,r,n,o,i,s){let a=`${e}:${r}`;s&&f4(n)&&this.providers.get(e)?.onRequestDelivery!=null&&this.pendingRequests.set(a,{providerName:e,requestId:r,method:n}),i&&this.pendingPrewarmedThreadStartRequestIds.add(a);let u={id:a,method:n,params:o};",
-    "cloudBefore": "async fetchHttp(e,r,n){try{"
+    "cloudBefore": "async fetchHttp(e,r,n){try{",
+    "viewMetaBefore": "webviewMetaTags(e){let r=[],n=this.findPanelByWebview(e);",
+    "nativeViewBefore": "async provideChatSessionItems(e,r){return(await this.requestThreadList(e)).data.map(o=>{",
+    "presentation": {
+      "relativePath": "webview/assets/app-initial-4bd9e54bcd58.js",
+      "originalHash": "48e766bf42c5642cca7b8c9f9b3906d840d5e7c9378039882500e9d3b6ebb8f6",
+      "currentPatchedHashes": [
+        "81c02e444a2e0863004376e100fff6a0420b533164afa4f0db6d6d784c4d986f"
+      ],
+      "previousPatchedHashes": [
+        "4b0a545ef99f9a38b221cf1f19665d43a6f4d0e22fcf1c2b5ea172497cf019ea",
+        "9ddbd9f88a47a6f8c803bd7b391139658178668e5467d2afa7bd31e192aeaf63",
+        "e7262f32676c1746168b74216c4f6ca20ebc4cfba78918e99512d41ae889d974"
+      ],
+      "rowBefore": "let Et=Tt;switch(n.kind){case`remote`:{let e;return t[176]!==n||t[177]!==wt?(e=wt(n),t[176]=n,t[177]=wt,t[178]=e):e=t[178],e}case`local`:{let e;return t[179]!==n||t[180]!==Et?(e=Et(n),t[179]=n,t[180]=Et,t[181]=e):e=t[181],e}}}",
+      "localHistoryBefore": "let Kn;return t[116]!==An||t[117]!==Ie||t[118]!==Ge",
+      "cloudHistoryBefore": "let gt=ht;if(L===void 0&&I?.length===0&&!Me)return gt;",
+      "pendingHistoryBefore": "let C;return t[30]!==x||t[31]!==S?",
+      "worktreeHistoryBefore": "let he;return t[25]!==L||t[26]!==O||t[27]!==k",
+      "additionalTargets": [
+        {
+          "relativePath": "webview/assets/header-5e09211ec02d.js",
+          "originalHash": "1956358b2e22e8a0b57e0d6152dfd7976c493b7747150e3e561236b6397a4d9a",
+          "currentPatchedHashes": [
+            "6b2304472ae98058e650a5252534863754b1e35c932ce29fe702b751ec28dadd"
+          ],
+          "previousPatchedHashes": [
+            "f1067bb6bd2e806bb74be40d59c6a57ec1bb4b93bb48fc1f6854f31d05a03ce2",
+            "692c38325ddef20200d400e3a18d65b50caa91192e8a8105fb2bbbe2bf8a76d9"
+          ],
+          "mergedHistoryBefore": "function fn(e,t,r){let i=Be(),a=n(pt),o=(0,gn.useMemo)(()=>t.map(e=>e.id),[t]),s=f(Ie,o),c=Me(),l=(0,gn.useRef)(new Map);return(0,gn.useMemo)(()=>{let n=mn(pn({tasks:e,localConversations:t,pendingWorktrees:i,pendingThreadStarts:a,envForFilter:r,threadSortKey:be,isBackgroundSubagentsEnabled:c,clientThreadIdsByConversationId:s}),l.current);return l.current=new Map(n.map(e=>[e.key,e])),n},[e,r,s,c,t,i,a])}"
+        },
+        {
+          "kind": "restore-only",
+          "relativePath": "webview/assets/app-initial-9f7d97690e9b.js",
+          "originalHash": "9fbb5f7d948509655dfe6898088365fcfaa44e11af7698add930411d78f0a5c5",
+          "currentPatchedHashes": [
+            "9fbb5f7d948509655dfe6898088365fcfaa44e11af7698add930411d78f0a5c5"
+          ],
+          "previousPatchedHashes": [
+            "44e14370fa0f45ba164ec6eda36b43db803ba273160e2a3361a75dd32b3bbfaa"
+          ]
+        }
+      ]
+    }
   },
   {
     "reviewedVersions": [
@@ -49,6 +100,7 @@
     ],
     "previousPatchedHashes": [],
     "localBefore": "sendProviderRequest(e,r,n,o,i,s){let a=`${e}:${r}`;s&&f4(n)&&this.providers.get(e)?.onRequestDelivery!=null&&this.pendingRequests.set(a,{providerName:e,requestId:r,method:n}),i&&this.pendingPrewarmedThreadStartRequestIds.add(a);let u={id:a,method:n,params:o};",
-    "cloudBefore": "async fetchHttp(e,r,n){try{"
+    "cloudBefore": "async fetchHttp(e,r,n){try{",
+    "restoreOnly": true
   }
 ]

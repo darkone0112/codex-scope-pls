@@ -2,7 +2,7 @@
 
 > Because apparently knowing which project you currently have open was too much context.
 
-Codex Scope Pls is a small VS Code extension that makes the OpenAI Codex extension scope its chat/session history to the workspace you are actually working in.
+Codex Scope Pls filters the chat rows displayed in the official Codex GUI to the workspace you are working in. Codex keeps its complete backend lists and sync state.
 
 Open Project A, see Project A conversations.
 
@@ -24,7 +24,7 @@ The especially funny part is that none of the required information is missing:
 
 * VS Code knows the active workspace.
 * Codex sessions already store their `cwd`.
-* `thread/list` already supports filtering by `cwd`.
+* The GUI’s chat summaries already expose their `cwd`.
 
 So this project connects the three dots.
 
@@ -62,9 +62,9 @@ The missing logic is basically:
 ```text
 current workspace
        ↓
-    thread/list
+full Codex state
        ↓
-     cwd filter
+GUI-only cwd filter
 ```
 
 No research breakthrough required.
@@ -117,7 +117,7 @@ Codex Scope Pls has a deliberately narrow purpose:
 
 This is **not** intended to become a replacement Codex client.
 
-I am not rebuilding an AI coding assistant because somebody forgot to pass `cwd`.
+The existing interface only needs a display filter.
 
 ## Modes
 
@@ -148,6 +148,31 @@ Codex Scope Pls: Use Current Workspace
 Codex Scope Pls: Show All Sessions
 ```
 
+Mode supports both a global **User** default and a **Workspace** override.
+The settings gear opens Workspace settings when a project is open, so changing
+Mode there affects that window immediately. **Global Filter Settings** opens the
+User defaults. A Workspace value takes precedence: use **Use Global Mode in
+This Workspace** to remove it and follow the User default again.
+
+Enable **Codex Scope Pls: Group Chats By Project** (off by default) to add folder
+sections to the inline history and Chat history menu while Mode is `all`:
+
+```json
+{
+  "codexScopePls.mode": "all",
+  "codexScopePls.groupChatsByProject": true
+}
+```
+
+Set it in User settings for a global default or Workspace settings for one
+project. Sections use each chat's exact recorded working directory, including
+separate sections for subfolders. Full paths distinguish folders with the same
+name. Sections follow their most recent displayed chat; rows keep their native
+order within each section. Cloud chats and local chats without a working
+directory get separate sections. Search, row actions, preview limits and
+View all counts remain native. Grouping changes only the displayed loaded rows;
+it does not scan folders or fetch additional history.
+
 ## Why not build another session manager?
 
 Because the official Codex interface is already there.
@@ -171,27 +196,40 @@ Which sessions are listed?
 
 ## Architecture
 
-Preferred implementation order:
+Version 0.3.6 filters presentation only. It leaves all app-server and HTTP
+requests, responses, complete thread lists, child-agent discovery, queue locks,
+IPC notifications and session restoration unchanged.
 
-```text
-1. Supported Codex / VS Code API
-             ↓
-2. Local Codex protocol proxy
-             ↓
-3. Narrow patch of the Codex extension
-```
+The reviewed patch modifies exactly three files:
 
-If a reliable supported interface exists, use it.
+* `out/extension.js`: adds a workspace/settings metadata tag when creating the
+  webview, sends preference changes to that view, and filters the native VS Code
+  session picker's display results.
+* `webview/assets/app-initial-4bd9e54bcd58.js`: filters the final desktop chat-row
+  output and the local, cloud, pending-start and worktree row components called
+  directly by VS Code's inline history and Chat history menu. Guards run after
+  existing React hooks. They do not mutate rows, summaries or shared lists.
+  A dedicated display notification updates only the metadata and its listeners.
+* `webview/assets/header-5e09211ec02d.js`: scopes derived history entries before
+  preview selection, totals, in-progress counts, tabs and search. The original
+  queries, source arrays, entry objects and native action callbacks stay intact.
+  Optional project sections wrap rendered rows in the inline preview and menu.
 
-If not, prefer a local protocol shim that intercepts relevant `thread/list` requests and injects the active workspace `cwd`.
+`workspace` displays rows whose cwd exactly matches one of the workspace roots.
+Multi-root windows display the union. Empty windows preserve global local-chat
+visibility. **Show Cloud Chats Everywhere** controls cloud row visibility; cloud
+requests and their original responses still run normally.
 
-If that cannot reliably determine the current workspace, the fallback is a tightly controlled patch of the installed Codex extension.
-
-Yes, modifying another extension is ugly.
-
-So is shipping an AI coding assistant that can inspect an entire repository but cannot separate its chat history from the other repositories sitting next to it.
-
-See [`docs/architecture.md`](docs/architecture.md) for the implementation details.
+Display settings and roots update the history immediately after a command or
+configuration change. One reload is still needed when installing changed patch
+code. The three modified files must match their complete hashes and exact patch
+points. A fourth asset is checked only to remove the retired 0.3.5 submission
+patch when its exact hash and original backup are present. Fresh installations
+leave that fourth asset untouched.
+The GUI profile currently covers the inspected 26.928.31416 / 26.5928.31416
+host bundle and the exact webview asset above. Reviewed 26.908, 26.917 and
+26.5930.51102 host builds support restoration only until their GUI boundaries
+are reviewed.
 
 ## Security
 
@@ -213,7 +251,7 @@ The extension does not contact:
 * remote configuration endpoints;
 * third-party update services.
 
-Workspace paths are only supplied locally to Codex where required for session filtering.
+Workspace paths are used locally to decide which GUI rows to display. They are not added to backend requests.
 
 ### No repository scanning
 
@@ -253,7 +291,7 @@ If anything is unexpected:
 DO NOT PATCH
 ```
 
-An unlisted version with an unchanged reviewed bundle can proceed. Changed or unknown bundle bytes remain untouched until compatibility is reviewed.
+An unlisted version can proceed only when its host bundle and both webview assets match the reviewed hashes. Changed or unknown bytes remain untouched until compatibility is reviewed.
 
 A temporary loss of workspace filtering is preferable to breaking Codex.
 
@@ -273,6 +311,11 @@ Patched content is:
 4. flushed and closed;
 5. atomically moved into place where supported.
 
+All files and their backups are validated under exclusive locks before any
+file changes. A replacement failure rolls back changes already made. These files
+are not one atomic filesystem transaction: after an interrupted operation,
+reapply or restore validates each exact known file state before proceeding.
+
 ### Restoration
 
 A restoration command returns Codex to its verified original state:
@@ -283,7 +326,54 @@ Codex Scope Pls: Restore Original Codex Extension
 
 No Codex session files are touched during patching or restoration.
 
-Disabling or uninstalling Codex Scope Pls restores a supported patched Codex bundle automatically and reloads the affected VS Code window. The uninstall hook is a second cleanup path when VS Code finalizes removal on restart. This removes both workspace session filtering and cloud-chat hiding: those behaviors live only in the restored bundle. Every cleanup path verifies the exact bundle hash and its original backup before changing anything; an unknown or damaged bundle is left untouched rather than guessed at.
+Disabling or uninstalling Codex Scope Pls restores a supported patched Codex bundle automatically and reloads the affected VS Code window. The uninstall hook is a second cleanup path when VS Code finalizes removal on restart. This removes workspace display filtering and cloud hiding, restoring all reviewed files. Every cleanup path verifies the exact bundle hash and its original backup before changing anything; an unknown or damaged bundle is left untouched rather than guessed at.
+
+### Upgrading from request filtering
+
+Versions before 0.3.0 filtered every backend `thread/list` call and suppressed
+cloud list requests. Codex also uses those lists for internal state discovery.
+The follow-up failure later recurred with this extension uninstalled and all
+Codex files restored, so its current cause remains unverified.
+Version 0.3.0 removes those request changes and filters only displayed rows.
+
+Upgrade uses the existing hash-verified host backup to remove the old patch
+before enabling GUI filtering. It preserves that backup and creates a separate
+verified original backup for the webview asset. Run **Reapply Patch** after
+installing if you previously used **Restore Original Codex Extension**, then
+reload every window using the installation. Save pending work before reloading.
+
+Version 0.3.0 missed the VS Code history menu: that menu calls the shared row
+components directly and bypasses the desktop renderer. Version 0.3.1 covers
+those calls and upgrades the known 0.3.0 GUI patch using the same verified
+original backup. No backend patch is reintroduced.
+
+Version 0.3.1 still hid rows after the global preview had already selected its
+items and calculated totals. Version 0.3.2 scopes the derived UI list first.
+It also replaces reload-only preferences with live display notifications, so
+workspace/all and cloud visibility commands update the history immediately.
+
+Version 0.3.3 makes Workspace/User mode precedence explicit, opens the relevant
+settings tab and adds optional project sections. The verified 0.3.2 patches
+migrate using their original backups. Reload once after installing this version
+to load the new display code; subsequent preference changes update live.
+
+Version 0.3.3 has a startup regression in its inline history subscription: it
+passes Codex's compiler-cache runtime to a React hook. Version 0.3.4 resolves
+the actual React namespace through a module-level helper, avoiding the inline
+component's shadowing local variable. The incorrect 0.3.3 header hash remains
+recognized only for upgrade/restoration with a verified original backup.
+
+Version 0.3.5 added a submission patch that called a missing Codex manager
+method and broke Composer submissions. Version 0.3.6 removes that code and
+recognizes its exact host and submission-asset hashes for verified restoration.
+It applies display filtering to only the same three files as 0.3.4. If Codex
+is already restored after uninstall/restart, no further restoration is needed.
+Unknown files still fail closed.
+
+Downgrading Codex Scope Pls does not restore modified Codex files: an older
+release can refuse hashes written by a newer release. Use 0.3.6's **Restore
+Original Codex Extension** for a known 0.3.5 installation, then reload every
+affected window. Its original backup for the fourth asset must exist.
 
 ## Fail closed
 
@@ -423,11 +513,14 @@ Codex is actively developed, so OpenAI may change:
 
 * extension internals;
 * session APIs;
-* `thread/list`;
+* GUI rendering boundaries;
 * workspace handling;
 * bundle layout.
 
-Compatibility may occasionally break.
+Compatibility may occasionally break. Search results and display surfaces that
+do not use the reviewed chat-row renderer remain stock. Backend pagination is
+unchanged: use the existing load-more controls to reach older matching chats.
+This filter is a viewing convenience, not access control.
 
 The desired failure mode is:
 

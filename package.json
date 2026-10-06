@@ -1,8 +1,8 @@
 {
   "name": "codex-scope-pls",
   "displayName": "Codex Scope Pls",
-  "description": "Local, reversible workspace filtering for explicitly supported Codex extension builds.",
-  "version": "0.2.6",
+  "description": "GUI-only, reversible workspace chat filtering for explicitly supported Codex builds.",
+  "version": "0.3.6",
   "publisher": "local",
   "license": "AGPL-3.0-only",
   "engines": {
@@ -45,13 +45,23 @@
           ],
           "default": "workspace",
           "scope": "window",
-          "description": "Scope future thread/list requests to exact workspace roots, or preserve stock listing. Reload the window to clear Codex caches."
+          "markdownDescription": "Show chats for exact workspace roots, or show all local chats. Changes update the history display immediately. A **Workspace** value overrides the **User** default. Use **Codex Scope Pls: Use Global Mode in This Workspace** to remove that override.",
+          "enumDescriptions": [
+            "Show local chats whose working directory matches an active workspace root.",
+            "Show local chats across project folders. Cloud visibility is controlled separately."
+          ]
         },
         "codexScopePls.showCloudChats": {
           "type": "boolean",
           "default": false,
           "scope": "application",
-          "description": "Show the signed-in account’s cloud task list in every workspace. Off hides cloud list results, independently of local session mode. Reload all windows after changing."
+          "description": "Display cloud chats in every workspace. Off hides them independently of local mode. Changes update the history display immediately."
+        },
+        "codexScopePls.groupChatsByProject": {
+          "type": "boolean",
+          "default": false,
+          "scope": "window",
+          "description": "When Mode is all, show folder sections in the inline chat history and Chat history menu. Uses each chat's recorded working directory; changes update the display immediately."
         }
       }
     },
@@ -86,6 +96,16 @@
         "title": "Filter Settings",
         "category": "Codex Scope Pls",
         "icon": "$(settings-gear)"
+      },
+      {
+        "command": "codexScopePls.globalSettings",
+        "title": "Global Filter Settings",
+        "category": "Codex Scope Pls"
+      },
+      {
+        "command": "codexScopePls.useGlobalMode",
+        "title": "Use Global Mode in This Workspace",
+        "category": "Codex Scope Pls"
       },
       {
         "command": "codexScopePls.toggleCloud",

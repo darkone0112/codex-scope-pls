@@ -25,4 +25,28 @@ async function locate(vscode, restoration = false, profiles = definitions) {
   const definition = selectBundle(profile, currentHash);
   return { target, definition, currentHash };
 }
-module.exports = { locate };
+
+async function installationTargets(target, definition, restoration = false) {
+  if (!restoration && !definition.presentation) {
+    throw new Error('This Codex build supports restoration only; GUI filtering has not been reviewed');
+  }
+  const targets = [{ target, definition }];
+  if (definition.presentation) {
+    const root = path.dirname(path.dirname(target));
+    for (const presentation of [definition.presentation, ...(definition.presentation.additionalTargets || [])]) {
+      const viewTarget = path.join(root, presentation.relativePath);
+      if (!samePath(await fs.realpath(path.dirname(viewTarget)), path.dirname(viewTarget))) {
+        throw new Error('Refusing symlinked webview directory');
+      }
+      const viewDefinition = { ...presentation, version: definition.version };
+      const hash = sha256(await readRegular(viewTarget));
+      if (![viewDefinition.originalHash, ...viewDefinition.currentPatchedHashes,
+        ...(viewDefinition.previousPatchedHashes || [])].includes(hash)) {
+        throw new Error('Unsupported Codex webview SHA-256');
+      }
+      targets.push({ target: viewTarget, definition: viewDefinition });
+    }
+  }
+  return targets;
+}
+module.exports = { locate, installationTargets };

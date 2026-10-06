@@ -1,7 +1,7 @@
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
-const { buildPoints } = require('../src/patch/pointBuilder');
+const { hostPoints, rowPoints, historyPoints, headerPoints } = require('../src/patch/presentationPoints');
 const hash = /^[a-f0-9]{64}$/;
 function validate(proposal) {
   if (!Array.isArray(proposal.reviewedVersions) || proposal.reviewedVersions.length < 1 || proposal.reviewedVersions.length > 6 ||
@@ -9,11 +9,28 @@ function validate(proposal) {
     !hash.test(proposal.originalHash) || !Array.isArray(proposal.currentPatchedHashes) ||
     proposal.currentPatchedHashes.length !== 1 || !proposal.currentPatchedHashes.every(value => hash.test(value)) ||
     !Array.isArray(proposal.previousPatchedHashes) || proposal.previousPatchedHashes.length !== 0 ||
-    typeof proposal.localBefore !== 'string' || proposal.localBefore.length > 4096 ||
-    typeof proposal.cloudBefore !== 'string' || proposal.cloudBefore.length > 256) {
+    !proposal.presentation ||
+    !/^webview\/assets\/[A-Za-z0-9-]+\.js$/.test(proposal.presentation.relativePath) ||
+    !hash.test(proposal.presentation.originalHash) ||
+    !Array.isArray(proposal.presentation.currentPatchedHashes) ||
+    proposal.presentation.currentPatchedHashes.length !== 1 ||
+    !proposal.presentation.currentPatchedHashes.every(value => hash.test(value)) ||
+    !Array.isArray(proposal.presentation.previousPatchedHashes) || proposal.presentation.previousPatchedHashes.length !== 0 ||
+    typeof proposal.presentation.rowBefore !== 'string' || proposal.presentation.rowBefore.length > 4096 ||
+    !Array.isArray(proposal.presentation.additionalTargets) || proposal.presentation.additionalTargets.length !== 1) {
     throw new Error('Invalid compatibility proposal');
   }
-  buildPoints(proposal.localBefore, proposal.cloudBefore);
+  hostPoints(proposal);
+  rowPoints(proposal.presentation.rowBefore);
+  historyPoints(proposal.presentation);
+  const header = proposal.presentation.additionalTargets[0];
+  if (!/^webview\/assets\/header-[a-f0-9]+\.js$/.test(header.relativePath) || !hash.test(header.originalHash) ||
+    !Array.isArray(header.currentPatchedHashes) || header.currentPatchedHashes.length !== 1 ||
+    !header.currentPatchedHashes.every(value => hash.test(value)) ||
+    !Array.isArray(header.previousPatchedHashes) || header.previousPatchedHashes.length !== 0) {
+    throw new Error('Invalid header presentation proposal');
+  }
+  headerPoints(header);
 }
 function addBundle(proposal, file = path.join(__dirname, '../src/patch/bundles.json')) {
   validate(proposal);

@@ -6,33 +6,28 @@ const os = require('node:os');
 const path = require('node:path');
 const definitions = require('../src/patch/definitions');
 const { sha256, transform } = require('../src/patch/integrity');
-const { assessBundle, deriveBundle, reportMarkdown } = require('../scripts/check-codex-compatibility');
+const { assessBundle, reportMarkdown } = require('../scripts/check-codex-compatibility');
 const { addBundle } = require('../scripts/add-codex-bundle');
 
-test('compatibility watch distinguishes reviewed, structurally compatible and incompatible bundles', async () => {
+test('compatibility watch refuses transport-only and unreviewed GUI bundles', async () => {
   const original = await fs.readFile(path.join(__dirname, 'fixtures/provider.js'));
-  const bundle = { ...definitions[0].bundles[0], originalHash: sha256(original), currentPatchedHashes: [], previousPatchedHashes: [] };
+  const bundle = { ...definitions[0].bundles[0], originalHash: sha256(original) };
   const profile = { ...definitions[0], bundles: [bundle] };
-  assert.deepEqual(assessBundle(profile, original), { status: 'reviewed-original', hash: sha256(original) });
-  const unrelatedChange = Buffer.concat([original, Buffer.from('\n// upstream unrelated change\n')]);
-  const candidate = assessBundle(profile, unrelatedChange);
-  assert.equal(candidate.status, 'structurally-compatible-review-required');
-  assert.deepEqual(candidate.patched, transform(unrelatedChange, { ...bundle, originalHash: sha256(unrelatedChange) }));
-  const incompatible = assessBundle(profile, Buffer.from('not a Codex bundle'));
-  assert.equal(incompatible.status, 'incompatible-review-required');
-  assert.match(incompatible.reason, /local request boundary/);
-});
-
-test('compatibility watch derives one narrow proposal with its resulting patch hash', async () => {
-  const original = await fs.readFile(path.join(__dirname, 'fixtures/provider.js'));
-  const { candidate, patched } = deriveBundle(original, '99.1.1');
-  assert.deepEqual(candidate.reviewedVersions, ['99.1.1']);
-  assert.equal(candidate.originalHash, sha256(original));
-  assert.deepEqual(candidate.currentPatchedHashes, [sha256(patched)]);
-  assert.equal(candidate.previousPatchedHashes.length, 0);
-  assert.match(candidate.localBefore, /^sendProviderRequest\(e,r,n,o,i,s\)\{/);
-  assert.equal(candidate.cloudBefore, 'async fetchHttp(e,r,n){try{');
-  assert.throws(() => deriveBundle(Buffer.concat([original, original]), '99.1.1'), /exactly one/);
+  assert.equal(assessBundle(profile, original).status, 'restoration-only-review-required');
+  const changed = assessBundle(profile, Buffer.concat([original, Buffer.from(' ')]));
+  assert.equal(changed.status, 'gui-review-required');
+  assert.equal(changed.candidate, undefined, 'must not generate a backend patch proposal');
+  const view = Buffer.from('synthetic GUI');
+  const guiBundle = { ...bundle, presentation: { originalHash: sha256(view) } };
+  const guiProfile = { ...profile, bundles: [guiBundle] };
+  assert.equal(assessBundle(guiProfile, original).status, 'gui-review-required');
+  assert.equal(assessBundle(guiProfile, original, Buffer.from('changed GUI')).status, 'gui-review-required');
+  assert.equal(assessBundle(guiProfile, original, view).status, 'reviewed-original');
+  const header = Buffer.from('synthetic header');
+  guiBundle.presentation.additionalTargets = [{ originalHash: sha256(header) }];
+  assert.equal(assessBundle(guiProfile, original, view).status, 'gui-review-required');
+  assert.equal(assessBundle(guiProfile, original, view, [Buffer.from('changed header')]).status, 'gui-review-required');
+  assert.equal(assessBundle(guiProfile, original, view, [header]).status, 'reviewed-original');
 });
 
 test('compatibility watch report is reviewable and does not include bundle contents', () => {
@@ -45,8 +40,11 @@ test('compatibility watch report is reviewable and does not include bundle conte
 });
 
 test('compatibility proposal writer accepts only a new bounded data entry', async t => {
-  const original = await fs.readFile(path.join(__dirname, 'fixtures/provider.js'));
-  const { candidate } = deriveBundle(original, '99.1.1');
+  const reviewed = require('../src/patch/bundles.json')[2];
+  const candidate = { ...reviewed, reviewedVersions: ['99.1.1'], previousPatchedHashes: [],
+    presentation: { ...reviewed.presentation, previousPatchedHashes: [],
+      additionalTargets: reviewed.presentation.additionalTargets.filter(target => target.kind !== 'restore-only')
+        .map(target => ({ ...target, previousPatchedHashes: [] })) } };
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-watch-test-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   const bundles = path.join(directory, 'bundles.json');
@@ -56,4 +54,5 @@ test('compatibility proposal writer accepts only a new bounded data entry', asyn
   assert.throws(() => addBundle(candidate, bundles), /already reviewed/);
   await fs.writeFile(bundles, '[]\n');
   assert.throws(() => addBundle({ ...candidate, originalHash: 'invalid' }, bundles), /Invalid compatibility proposal/);
+  assert.throws(() => addBundle({ ...candidate, presentation: undefined }, bundles), /Invalid compatibility proposal/);
 });

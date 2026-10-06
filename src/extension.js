@@ -1,7 +1,7 @@
 'use strict';
 const vscode = require('vscode');
-const { locate } = require('./codexLocator');
-const { change } = require('./patch/patcher');
+const { locate, installationTargets } = require('./codexLocator');
+const { changeAll } = require('./patch/patcher');
 const { diagnostics, safeError } = require('./diagnostics');
 
 function activate(context) {
@@ -23,10 +23,12 @@ function activate(context) {
   }
   async function patch(action, reload = true) {
     const { target, definition } = await locate(vscode, action === 'restore');
-    const result = await change(target, definition, action);
-    lastResult = `${action}: ${result.changed ? 'file replaced' : 'already in requested state'}`;
+    const targets = await installationTargets(target, definition, action === 'restore');
+    const results = await changeAll(targets, action);
+    const changed = results.some(result => result.changed);
+    lastResult = `${action}: ${changed ? 'display files replaced' : 'already in requested state'}`;
     output.appendLine(lastResult);
-    if (result.changed && reload) void reloadNotice('Codex Scope Pls: reload every window using this Codex installation to load the changed bundle.');
+    if (changed && reload) void reloadNotice('Codex Scope Pls: reload every window using this Codex installation to load the display filter.');
   }
   function command(name, task) {
     context.subscriptions.push(vscode.commands.registerCommand(`codexScopePls.${name}`, () => serial(task)));
@@ -35,7 +37,15 @@ function activate(context) {
     const target = vscode.workspace.workspaceFolders?.length ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
     await vscode.workspace.getConfiguration('codexScopePls').update('mode', mode, target);
   });
-  command('settings', () => vscode.commands.executeCommand('workbench.action.openSettings', '@ext:local.codex-scope-pls'));
+  command('settings', () => vscode.commands.executeCommand(
+    vscode.workspace.workspaceFolders?.length ? 'workbench.action.openWorkspaceSettings' : 'workbench.action.openSettings',
+    '@ext:local.codex-scope-pls'));
+  command('globalSettings', () => vscode.commands.executeCommand('workbench.action.openSettings', '@ext:local.codex-scope-pls'));
+  command('useGlobalMode', async () => {
+    if (vscode.workspace.workspaceFolders?.length) {
+      await vscode.workspace.getConfiguration('codexScopePls').update('mode', undefined, vscode.ConfigurationTarget.Workspace);
+    }
+  });
   command('toggleCloud', async () => {
     const config = vscode.workspace.getConfiguration('codexScopePls');
     await config.update('showCloudChats', !config.get('showCloudChats', false), vscode.ConfigurationTarget.Global);
@@ -54,14 +64,6 @@ function activate(context) {
     output.appendLine(JSON.stringify(await diagnostics(vscode, context, lastResult), null, 2));
     output.show();
   });
-  context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
-    if (event.affectsConfiguration('codexScopePls.mode') || event.affectsConfiguration('codexScopePls.showCloudChats')) {
-      void reloadNotice('Codex Scope Pls: settings changed. Reload to clear cached Codex lists and pagination.');
-    }
-  }));
-  context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {
-    void reloadNotice('Codex Scope Pls: workspace roots changed. Reload to clear cached Codex lists and pagination.');
-  }));
   context.subscriptions.push(vscode.extensions.onDidChange(() => {
     void serial(async () => {
       // This event fires for disable and uninstall while this extension host is

@@ -6,7 +6,8 @@ const path = require('node:path');
 const definitions = require('./patch/definitions');
 const { selectDefinition, selectBundle, sha256 } = require('./patch/integrity');
 const { readRegular } = require('./patch/backup');
-const { change } = require('./patch/patcher');
+const { inspect, changeAll } = require('./patch/patcher');
+const { installationTargets } = require('./codexLocator');
 
 async function readDirectory(directory) {
   const stat = await fs.lstat(directory);
@@ -26,16 +27,17 @@ async function patchedTargets(extensionsDirectory, profiles = definitions) {
     const target = path.join(root, profile.relativePath);
     const hash = sha256(await readRegular(target));
     const definition = selectBundle(profile, hash);
-    if (hash !== definition.originalHash) targets.push({ target, definition });
+    const installation = await installationTargets(target, definition, true);
+    const states = [];
+    for (const item of installation) states.push(await inspect(item.target, item.definition));
+    if (states.some(state => state.isPatched)) targets.push(...installation);
   }
   return targets;
 }
 
 async function restoreInstalled(extensionsDirectory, profiles = definitions) {
   const targets = await patchedTargets(extensionsDirectory, profiles);
-  const results = [];
-  for (const { target, definition } of targets) results.push(await change(target, definition, 'restore'));
-  return results;
+  return targets.length ? changeAll(targets, 'restore') : [];
 }
 
 async function main() {
