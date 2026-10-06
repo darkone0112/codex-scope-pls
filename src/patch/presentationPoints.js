@@ -124,4 +124,61 @@ function groupedMenuPoints() {
       after: 't[22]=g,t[23]=V,t[34]=viewScope):V=t[23];' }
   ];
 }
-module.exports = { hostPoints, rowPoints, historyPoints, notificationPoints, headerPoints };
+
+// The 26.930.61225 webview keeps the same display pipeline but has distinct
+// minified identifiers and compiler-cache slots. Keep its exact points separate.
+function modernRowPoints() {
+  const before = 'let Et=Tt;switch(n.kind){case`remote`:{let e;return t[179]!==n||t[180]!==wt?(e=wt(n),t[179]=n,t[180]=wt,t[181]=e):e=t[181],e}case`local`:{let e;return t[182]!==n||t[183]!==Et?(e=Et(n),t[182]=n,t[183]=Et,t[184]=e):e=t[184],e}}}';
+  return [{ name: 'final chat row rendering', before,
+    after: 'let Et=Tt;\n/* codex-scope-pls:row-view:2 */\n' + visibility +
+      '\nif(!codexScopePlsVisible(n,Ie??Ee,codexScopePlsReadViewScope(document)))return null;' +
+      before.slice('let Et=Tt;'.length) }];
+}
+
+function modernNotificationPoints() {
+  const before = 'return typeof i!=`object`||!i||!P2e(i)?null:i}function N2e(e)';
+  return [{ name: 'display preference notification', before,
+    after: '\n/* codex-scope-pls:view-notification:2 */\n' + visibility + notification +
+      '\nif(codexScopePlsAcceptViewScope(i,document,window))return null;return typeof i!=`object`||!i||!P2e(i)?null:i}\nfunction N2e(e)' }];
+}
+
+function modernHeaderPoints() {
+  const merged = 'function fn(e,t,n){let r=Ne(),i=o(tt),a=(0,gn.useMemo)(()=>t.map(e=>e.id),[t]),s=_(yt,a),c=Ie(),l=(0,gn.useRef)(new Map);return(0,gn.useMemo)(()=>{let a=mn(pn({tasks:e,localConversations:t,pendingWorktrees:r,pendingThreadStarts:i,envForFilter:n,threadSortKey:Ae,isBackgroundSubagentsEnabled:c,clientThreadIdsByConversationId:s}),l.current);return l.current=new Map(a.map(e=>[e.key,e])),a},[e,n,s,c,t,r,i])}';
+  const helpers = '\n/* codex-scope-pls:history-list:2 */\n' + visibility + history + groups;
+  const recent = 'I.map(e=>(0,Z.jsx)(En,{item:e,isActive:e.kind===`local`&&x===(e.pendingThreadStart?.clientThreadId??e.conversation?.id),onClose:i,onActiveArchiveStart:h},e.key))';
+  const local = 'F.map(e=>(0,Z.jsx)(Tn,{conversationId:e.id,hostId:e.hostId,updatedAt:e.recencyAt??e.updatedAt,isActive:x===e.id,onClose:i,onActiveArchiveStart:h},e.id))';
+  return [
+    { name: 'history before preview and counts', before: merged,
+      after: 'function fn(e,t,n){' + helpers +
+        '\nconst viewScope=codexScopePlsUseViewScope(gn,document,window);' +
+        merged.slice('function fn(e,t,n){'.length)
+          .replace('new Map(a.map(e=>[e.key,e])),a}', 'new Map(a.map(e=>[e.key,e])),codexScopePlsHistoryEntries(a,viewScope)}')
+          .replace('[e,n,s,c,t,r,i])}', '[e,n,s,c,t,r,i,viewScope])}') },
+    { name: 'history menu preference subscription', before: 'function vn(e){let t=(0,Cn.c)(34),',
+      after: 'function vn(e){' + helpers +
+        '\nconst viewScope=codexScopePlsUseViewScope(wn,document,window);let t=(0,Cn.c)(35),' },
+    { name: 'local history tab and search', before: 'let E=r.filter(T),D=fn(n.data,r,ee),',
+      after: 'let E=codexScopePlsHistoryConversations(r,viewScope).filter(T),D=fn(n.data,r,ee),' },
+    { name: 'progress count preference subscription', before: 'function On(e){let t=(0,jn.c)(64),n;',
+      after: 'function On(e){' + helpers +
+        '\nconst viewScope=codexScopePlsUseViewScope(Mn,document,window);let t=(0,jn.c)(64),n;' },
+    { name: 'visible progress count', before: 'let E=T,D=ee.length+E.length,O;',
+      after: 'let E=T,D=(viewScope==null||viewScope.showCloudChats?ee.length:0)+codexScopePlsHistoryConversations(E,viewScope).length,O;' },
+    { name: 'inline history group subscription', before: 'function Et(e){let t=(0,jt.c)(23),',
+      after: 'function codexScopePlsInlineReact(){return d()}\nfunction Et(e){' + helpers +
+        '\nconst viewScope=codexScopePlsUseViewScope(codexScopePlsInlineReact(),document,window);let t=(0,jt.c)(23),' },
+    { name: 'inline history folder sections', before: 'else d=t[12];let f;t[17]!==n.length||t[18]!==u?',
+      after: 'else d=t[12];d=codexScopePlsGroupHistoryRows(l,d,J,viewScope);let f;t[17]!==n.length||t[18]!==u?' },
+    { name: 'recent history folder sections', before: recent,
+      after: `codexScopePlsGroupHistoryRows(I,${recent.replace('I.map(e=>', 'I.map((e)=>')},Z,viewScope)` },
+    { name: 'local history folder sections', before: local,
+      after: `codexScopePlsGroupHistoryRows(F,${local.replace('F.map(e=>', 'F.map((e)=>')},Z,viewScope)` },
+    { name: 'recent folder preference cache', before: 't[22]!==h?(V=b===`recent`&&',
+      after: 't[22]!==h||t[34]!==viewScope?(V=b===`recent`&&' },
+    { name: 'recent folder preference cache store', before: 't[22]=h,t[23]=V):V=t[23];',
+      after: 't[22]=h,t[23]=V,t[34]=viewScope):V=t[23];' }
+  ];
+}
+
+module.exports = { hostPoints, rowPoints, historyPoints, notificationPoints, headerPoints,
+  modernRowPoints, modernNotificationPoints, modernHeaderPoints };

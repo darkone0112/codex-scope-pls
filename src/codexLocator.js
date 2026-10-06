@@ -28,7 +28,7 @@ async function locate(vscode, restoration = false, profiles = definitions) {
 
 async function installationTargets(target, definition, restoration = false) {
   if (!restoration && !definition.presentation) {
-    throw new Error('This Codex build supports restoration only; GUI filtering has not been reviewed');
+    throw new Error('No reviewed GUI profile for this Codex build');
   }
   const targets = [{ target, definition }];
   if (definition.presentation) {

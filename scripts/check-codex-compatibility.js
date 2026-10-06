@@ -80,12 +80,17 @@ function vsixUrl(version) {
   if (!asset?.source) throw new Error('Marketplace response has no VSIX asset');
   return asset.source;
 }
-function assessBundle(profile, bytes, viewBytes, additionalBytes = []) {
-  const hash = sha256(bytes);
+function reviewedOriginal(profile, hash, runtimeVersion) {
   const originals = profile.bundles.filter(bundle => hash === bundle.originalHash);
-  if (originals.length === 1) {
-    const bundle = originals[0];
-    if (!bundle.presentation) return { status: 'restoration-only-review-required', hash };
+  const byVersion = originals.filter(bundle => bundle.reviewedVersions.includes(runtimeVersion));
+  if (byVersion.length === 1) return byVersion[0];
+  return originals.length === 1 ? originals[0] : undefined;
+}
+function assessBundle(profile, bytes, viewBytes, additionalBytes = [], runtimeVersion) {
+  const hash = sha256(bytes);
+  const bundle = reviewedOriginal(profile, hash, runtimeVersion);
+  if (bundle) {
+    if (!bundle.presentation) return { status: 'gui-review-required', hash, reason: 'No reviewed GUI profile for this package version' };
     if (!viewBytes || sha256(viewBytes) !== bundle.presentation.originalHash) {
       return { status: 'gui-review-required', hash, reason: 'Webview target SHA-256 is not reviewed' };
     }
@@ -125,8 +130,8 @@ async function queryVersions() {
   return extension.versions;
 }
 function reportMarkdown(report) {
-  const rows = report.results.map(result => `| ${result.profile} | ${result.version} | ${result.status} | \`${result.hash || 'n/a'}\` |`);
-  return ['# Codex compatibility watch', '', `Checked: ${report.checkedAt}`, '', '| Profile | Marketplace version | Result | Bundle SHA-256 |', '| --- | --- | --- | --- |', ...rows, '',
+  const rows = report.results.map(result => `| ${result.profile} | ${result.version} | ${result.runtimeVersion || 'n/a'} | ${result.status} | \`${result.hash || 'n/a'}\` |`);
+  return ['# Codex compatibility watch', '', `Checked: ${report.checkedAt}`, '', '| Profile | Marketplace version | Installed package version | Result | Bundle SHA-256 |', '| --- | --- | --- | --- | --- |', ...rows, '',
     'A review is required before changing trusted hashes or patch definitions. Downloaded VSIX files were inspected only; no executable was run.'].join('\n');
 }
 async function inspectMarketplace() {
@@ -143,12 +148,16 @@ async function inspectMarketplace() {
       await fs.writeFile(archive, await fetchOfficial(vsixUrl(version)));
       verifyManifest(unzip(archive, 'extension.vsixmanifest'), version.version, targetPlatform);
       const host = unzip(archive, 'extension/out/extension.js');
-      const reviewed = profile.bundles.find(bundle => bundle.originalHash === sha256(host));
+      const runtimeVersion = JSON.parse(unzip(archive, 'extension/package.json').toString('utf8')).version;
+      if (typeof runtimeVersion !== 'string' || !/^\d[0-9A-Za-z.-]{0,127}$/.test(runtimeVersion)) {
+        throw new Error('Official VSIX has an invalid package version');
+      }
+      const reviewed = reviewedOriginal(profile, sha256(host), runtimeVersion);
       const view = reviewed?.presentation
         ? unzip(archive, `extension/${reviewed.presentation.relativePath}`) : undefined;
       const additional = (reviewed?.presentation?.additionalTargets || []).map(target =>
         unzip(archive, `extension/${target.relativePath}`));
-      const assessed = assessBundle(profile, host, view, additional);
+      const assessed = assessBundle(profile, host, view, additional, runtimeVersion);
       if (assessed.status === 'reviewed-original') {
         syntaxCheck(transform(host, reviewed));
         syntaxCheck(transform(view, reviewed.presentation));
@@ -156,7 +165,7 @@ async function inspectMarketplace() {
           syntaxCheck(transform(additional[index], reviewed.presentation.additionalTargets[index]));
         }
       }
-      results.push({ profile: profileKey(profile), targetPlatform, version: version.version,
+      results.push({ profile: profileKey(profile), targetPlatform, version: version.version, runtimeVersion,
         status: assessed.status, hash: assessed.hash, viewHash: assessed.viewHash, reason: assessed.reason });
     }
     const report = { checkedAt: new Date().toISOString(), results };

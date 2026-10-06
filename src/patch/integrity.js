@@ -34,8 +34,13 @@ function selectDefinition(version, platform, arch, definitions) {
 function selectBundle(profile, hash) {
   const matches = profile.bundles.filter(bundle => [bundle.originalHash, ...bundle.currentPatchedHashes,
     ...bundle.previousPatchedHashes].includes(hash));
-  if (matches.length !== 1) throw new Error('Unsupported Codex bundle SHA-256');
-  const bundle = matches[0];
+  // OpenAI can reuse an identical host bundle with different webview assets.
+  // In that case the installed version must identify exactly one GUI profile.
+  const byVersion = matches.filter(bundle => bundle.reviewedVersions.includes(profile.version));
+  if (byVersion.length > 1 || (matches.length !== 1 && byVersion.length !== 1)) {
+    throw new Error('Unsupported Codex bundle SHA-256 (ambiguous profile or unknown hash)');
+  }
+  const bundle = byVersion[0] || matches[0];
   return { ...profile, ...bundle, version: profile.version, knownVersion: bundle.reviewedVersions.includes(profile.version) };
 }
 module.exports = { sha256, count, transform, selectDefinition, selectBundle };

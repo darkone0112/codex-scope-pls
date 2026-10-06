@@ -13,7 +13,7 @@ test('compatibility watch refuses transport-only and unreviewed GUI bundles', as
   const original = await fs.readFile(path.join(__dirname, 'fixtures/provider.js'));
   const bundle = { ...definitions[0].bundles[0], originalHash: sha256(original) };
   const profile = { ...definitions[0], bundles: [bundle] };
-  assert.equal(assessBundle(profile, original).status, 'restoration-only-review-required');
+  assert.equal(assessBundle(profile, original).status, 'gui-review-required');
   const changed = assessBundle(profile, Buffer.concat([original, Buffer.from(' ')]));
   assert.equal(changed.status, 'gui-review-required');
   assert.equal(changed.candidate, undefined, 'must not generate a backend patch proposal');
@@ -28,6 +28,22 @@ test('compatibility watch refuses transport-only and unreviewed GUI bundles', as
   assert.equal(assessBundle(guiProfile, original, view).status, 'gui-review-required');
   assert.equal(assessBundle(guiProfile, original, view, [Buffer.from('changed header')]).status, 'gui-review-required');
   assert.equal(assessBundle(guiProfile, original, view, [header]).status, 'reviewed-original');
+});
+
+test('compatibility watch selects the GUI profile by package version when host bytes are reused', () => {
+  const host = Buffer.from('same host');
+  const view = Buffer.from('new view');
+  const header = Buffer.from('new header');
+  const originalHash = sha256(host);
+  const profile = { bundles: [
+    { reviewedVersions: ['old'], originalHash, currentPatchedHashes: [], previousPatchedHashes: [] },
+    { reviewedVersions: ['new'], originalHash, currentPatchedHashes: [], previousPatchedHashes: [],
+      presentation: { originalHash: sha256(view), additionalTargets: [{ originalHash: sha256(header) }] } }
+  ] };
+  assert.equal(assessBundle(profile, host, view, [header], 'new').status, 'reviewed-original');
+  assert.equal(assessBundle(profile, host, view, [header], 'old').status, 'gui-review-required');
+  assert.equal(assessBundle(profile, host, view, [header], 'unknown').status, 'gui-review-required');
+  assert.equal(assessBundle(profile, host, Buffer.from('changed'), [header], 'new').status, 'gui-review-required');
 });
 
 test('compatibility watch report is reviewable and does not include bundle contents', () => {

@@ -14,7 +14,7 @@ const expectedProfiles = [
   'linux/x64', 'linux/arm64', 'darwin/x64', 'darwin/arm64',
   'win32/x64', 'win32/arm64'
 ];
-test('only reviewed platform profiles are allowlisted; the exact bundle hash decides compatibility', () => {
+test('only reviewed platform profiles are allowlisted; hash and shared-host version select compatibility', () => {
   assert.deepEqual(definitions.map(d => `${d.platform}/${d.arch}`), expectedProfiles);
   for (const d of definitions) {
     for (const bundle of d.bundles) {
@@ -33,6 +33,19 @@ test('only reviewed platform profiles are allowlisted; the exact bundle hash dec
   assert.throws(() => selectDefinition('unsafe/name', 'linux', 'x64', definitions), /Invalid/);
   for (const [platform, arch] of [['freebsd', 'x64'], ['darwin', 'ia32'], ['linux', 'arm'], ['win32', 'ia32']]) {
     assert.throws(() => selectDefinition('99.1.1', platform, arch, definitions), /Unsupported/);
+  }
+});
+
+test('shared host hash selects only the matching GUI version and refuses unknown versions', () => {
+  for (const profile of definitions) {
+    const hostHash = profile.bundles[3].originalHash;
+    const old = selectBundle(selectDefinition('26.930.51102', profile.platform, profile.arch, definitions), hostHash);
+    assert.equal(old.presentation, undefined);
+    const current = selectBundle(selectDefinition('26.930.61225', profile.platform, profile.arch, definitions), hostHash);
+    assert.equal(current.presentation.layout, '2026-10');
+    assert.notEqual(old.currentPatchedHashes[0], current.currentPatchedHashes[0]);
+    assert.throws(() => selectBundle(selectDefinition('26.930.99999', profile.platform, profile.arch, definitions), hostHash),
+      /ambiguous profile/);
   }
 });
 

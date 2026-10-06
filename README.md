@@ -196,7 +196,7 @@ Which sessions are listed?
 
 ## Architecture
 
-Version 0.3.6 filters presentation only. It leaves all app-server and HTTP
+Version 0.3.6 and later filter presentation only. They leave all app-server and HTTP
 requests, responses, complete thread lists, child-agent discovery, queue locks,
 IPC notifications and session restoration unchanged.
 
@@ -205,12 +205,14 @@ The reviewed patch modifies exactly three files:
 * `out/extension.js`: adds a workspace/settings metadata tag when creating the
   webview, sends preference changes to that view, and filters the native VS Code
   session picker's display results.
-* `webview/assets/app-initial-4bd9e54bcd58.js`: filters the final desktop chat-row
-  output and the local, cloud, pending-start and worktree row components called
-  directly by VS Code's inline history and Chat history menu. Guards run after
-  existing React hooks. They do not mutate rows, summaries or shared lists.
-  A dedicated display notification updates only the metadata and its listeners.
-* `webview/assets/header-5e09211ec02d.js`: scopes derived history entries before
+* The reviewed `app-initial` asset (`4bd9e54bcd58` or `5120fa5fe295`): filters
+  final desktop chat-row output. The older profile also guards the local, cloud,
+  pending-start and worktree row components called directly by VS Code's history
+  menu. Guards run after existing React hooks. They do not mutate rows,
+  summaries or shared lists. A dedicated display notification updates only the
+  metadata and its listeners.
+* The reviewed `header` asset (`5e09211ec02d` or `901453333583`): scopes
+  derived history entries before
   preview selection, totals, in-progress counts, tabs and search. The original
   queries, source arrays, entry objects and native action callbacks stay intact.
   Optional project sections wrap rendered rows in the inline preview and menu.
@@ -226,10 +228,14 @@ code. The three modified files must match their complete hashes and exact patch
 points. A fourth asset is checked only to remove the retired 0.3.5 submission
 patch when its exact hash and original backup are present. Fresh installations
 leave that fourth asset untouched.
-The GUI profile currently covers the inspected 26.928.31416 / 26.5928.31416
-host bundle and the exact webview asset above. Reviewed 26.908, 26.917 and
-26.5930.51102 host builds support restoration only until their GUI boundaries
-are reviewed.
+The GUI profiles cover the inspected 26.928.31416 / 26.5928.31416 build and
+the local 26.930.61225 build. The latter reuses the 26.930.51102 host bytes
+but has different webview assets, so the exact package version selects its GUI
+profile. Older host records without GUI assets remain available to restore
+their known previous patches; they do not enable filtering.
+The official Marketplace 26.5930.61225 Linux VSIX has different webview
+assets from local 26.930.61225 despite sharing the host hash. It remains a
+separate compatibility review.
 
 ## Security
 
@@ -291,7 +297,10 @@ If anything is unexpected:
 DO NOT PATCH
 ```
 
-An unlisted version can proceed only when its host bundle and both webview assets match the reviewed hashes. Changed or unknown bytes remain untouched until compatibility is reviewed.
+An unlisted version can proceed only when one host profile matches and all of
+its GUI assets match the reviewed hashes. If two builds share host bytes, the
+installed package version must select exactly one profile. Changed, unknown or
+ambiguous files remain untouched until compatibility is reviewed.
 
 A temporary loss of workspace filtering is preferable to breaking Codex.
 
@@ -370,10 +379,17 @@ It applies display filtering to only the same three files as 0.3.4. If Codex
 is already restored after uninstall/restart, no further restoration is needed.
 Unknown files still fail closed.
 
+Version 0.3.7 adds a GUI profile for the inspected local 26.930.61225 build.
+Its host bundle is shared with 26.930.51102, so these profiles use the exact
+installed version to select the right GUI assets. The old backend patch data
+is retained only for recovery of known prior patched bytes. Display filtering
+still touches only the host and two webview files.
+
 Downgrading Codex Scope Pls does not restore modified Codex files: an older
-release can refuse hashes written by a newer release. Use 0.3.6's **Restore
-Original Codex Extension** for a known 0.3.5 installation, then reload every
-affected window. Its original backup for the fourth asset must exist.
+release can refuse hashes written by a newer release. Use **Restore Original
+Codex Extension** from version 0.3.6 or newer for a known 0.3.5 installation,
+then reload every affected window. Its original backup for the fourth asset
+must exist.
 
 ## Fail closed
 

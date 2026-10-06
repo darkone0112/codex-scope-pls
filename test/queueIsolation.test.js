@@ -222,7 +222,7 @@ test('all display targets apply and restore together; unknown GUI bytes refuse b
   await fs.writeFile(targets[1].target, 'changed GUI');
   await assert.rejects(installationTargets(targets[0].target, targets[0].definition), /webview SHA/);
   assert.deepEqual(await fs.readFile(targets[0].target), host);
-  await assert.rejects(installationTargets(targets[0].target, { ...targets[0].definition, presentation: undefined }), /restoration only/);
+  await assert.rejects(installationTargets(targets[0].target, { ...targets[0].definition, presentation: undefined }), /No reviewed GUI profile/);
 });
 
 test('previous display revisions upgrade together, preserve originals and refuse a missing header backup', async t => {
