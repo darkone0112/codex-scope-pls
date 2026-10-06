@@ -2,7 +2,7 @@
   "name": "codex-scope-pls",
   "displayName": "Codex Scope Pls",
   "description": "GUI-only, reversible workspace chat filtering for explicitly supported Codex builds.",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "publisher": "local",
   "license": "AGPL-3.0-only",
   "engines": {

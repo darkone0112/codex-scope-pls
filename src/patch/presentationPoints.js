@@ -17,6 +17,7 @@ const groups = staticSource('historyGroups.js', '\nmodule.exports = { codexScope
 function hostPoints(bundle) {
   const meta = bundle.viewMetaBefore;
   const native = bundle.nativeViewBefore;
+  const escapeHtml = bundle.presentation.layout === '2026-10' ? 'ch' : 'ph';
   if (meta !== 'webviewMetaTags(e){let r=[],n=this.findPanelByWebview(e);' ||
     native !== 'async provideChatSessionItems(e,r){return(await this.requestThreadList(e)).data.map(o=>{') {
     throw new Error('Invalid presentation compatibility data');
@@ -24,7 +25,7 @@ function hostPoints(bundle) {
   return [
     { name: 'view scope metadata', before: meta,
       after: 'webviewMetaTags(e){\n/* codex-scope-pls:view-meta:1 */\n' + scope +
-        '\nlet r=[`<meta name="codex-scope-pls-view" content="${ph(JSON.stringify(codexScopePlsViewScope(require("vscode"))))}">`],n=this.findPanelByWebview(e);' },
+        '\nlet r=[`<meta name="codex-scope-pls-view" content="${' + escapeHtml + '(JSON.stringify(codexScopePlsViewScope(require("vscode"))))}">`],n=this.findPanelByWebview(e);' },
     { name: 'native chat session display', before: native,
       after: 'async provideChatSessionItems(e,r){\n/* codex-scope-pls:native-view:1 */\n' + scope + visibility +
         '\nconst viewScope=codexScopePlsViewScope(require("vscode"));return(await this.requestThreadList(e)).data.filter(o=>codexScopePlsVisible({kind:"local"},o,viewScope)).map(o=>{' },

@@ -385,6 +385,12 @@ installed version to select the right GUI assets. The old backend patch data
 is retained only for recovery of known prior patched bytes. Display filtering
 still touches only the host and two webview files.
 
+Version 0.3.7 called the wrong HTML-escape helper when constructing the host
+webview metadata, causing the Codex sidebar to fail before its HTML loaded.
+Version 0.3.8 uses the helper present in 26.930.61225 and recognizes the
+0.3.7 host patch for verified replacement or restoration. Reload VS Code
+after updating so the extension host reads the repaired file.
+
 Downgrading Codex Scope Pls does not restore modified Codex files: an older
 release can refuse hashes written by a newer release. Use **Restore Original
 Codex Extension** from version 0.3.6 or newer for a known 0.3.5 installation,

@@ -13,6 +13,18 @@ const scope = (mode = 'workspace') => JSON.stringify({
 });
 const document = mode => ({ querySelector: () => ({ content: scope(mode) }) });
 
+test('current Codex host renders its scope meta tag with the installed bundle HTML escape helper', () => {
+  const source = fs.readFileSync(path.join(__dirname, 'fixtures/modernViewHost.js'));
+  const definition = { originalHash: sha256(source), points: current.points.slice(0, 1) };
+  const vscode = { workspace: { workspaceFolders: [{ uri: { scheme: 'file', fsPath: '/a' } }],
+    getConfiguration: () => ({ get: key => key === 'mode' ? 'workspace' : false }) } };
+  const Host = run(transform(source, definition), { process,
+    require: name => name === 'vscode' ? vscode : require(name) });
+  const tag = new Host().webviewMetaTags({});
+  assert.match(tag, /<meta name="codex-scope-pls-view"/);
+  assert.match(tag, /&quot;mode&quot;:&quot;workspace&quot;/);
+});
+
 function run(source, globals) {
   const sandbox = { module: { exports: {} }, ...globals };
   vm.runInNewContext(source.toString(), sandbox);

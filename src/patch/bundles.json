@@ -107,9 +107,11 @@
     ],
     "originalHash": "1f051b97e1388816133ba9a5070832bf77ccd3e47b47fbda88f7a3d0be809e40",
     "currentPatchedHashes": [
+      "e2e161e795adf2f26d7ea4481d6c1df499869df61ba33ffe035b3a200d4bbe77"
+    ],
+    "previousPatchedHashes": [
       "4053e589f6546334d38da778661a9659691f0ac922a08aa3d15b73bb682a3b42"
     ],
-    "previousPatchedHashes": [],
     "viewMetaBefore": "webviewMetaTags(e){let r=[],n=this.findPanelByWebview(e);",
     "nativeViewBefore": "async provideChatSessionItems(e,r){return(await this.requestThreadList(e)).data.map(o=>{",
     "presentation": {
