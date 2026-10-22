@@ -1,0 +1,4 @@
+// Copied origin/chunk parser and row boundary from Codex 26.1007.
+function C4e(e,t){let n=e.source,r=t.location.origin;if(e.origin!==r||n===t&&r!==``&&r!==D4e&&e.origin!==r)return null;let i=e.data;if(E4e(i)){let e=w4e(t).receive(i);if(e.type!==`passthrough`&&e.acknowledgement!=null&&mm.postMessage({type:`chunked-message-ack`,transferId:e.acknowledgement.transferId,sequence:e.acknowledgement.sequence}),e.type===`pending`)return null;i=e.message}return typeof i!=`object`||!i||!T4e(i)?null:i}
+function row(n,summary){let t=(0,Compiler.c)(197),kt=e=>e,At=e=>e;let Ae=n.kind===`local`?n.summary??null:null,Be=store(selector,key)??Ae;let jt=At;switch(n.kind){case`remote`:{let e;return t[191]!==n||t[192]!==kt?(e=kt(n),t[191]=n,t[192]=kt,t[193]=e):e=t[193],e}case`local`:{let e;return t[194]!==n||t[195]!==jt?(e=jt(n),t[194]=n,t[195]=jt,t[196]=e):e=t[196],e}}}
+module.exports={message:C4e,row};

@@ -4,10 +4,10 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const definitions = require('./patch/definitions');
-const { selectDefinition, selectBundle, sha256 } = require('./patch/integrity');
+const { selectDefinition } = require('./patch/integrity');
 const { readRegular } = require('./patch/backup');
 const { inspect, changeAll } = require('./patch/patcher');
-const { installationTargets } = require('./codexLocator');
+const { installationTargets, locateInstallation } = require('./codexLocator');
 
 async function readDirectory(directory) {
   const stat = await fs.lstat(directory);
@@ -25,8 +25,7 @@ async function patchedTargets(extensionsDirectory, profiles = definitions) {
     if (manifest.name !== 'chatgpt' || manifest.publisher !== 'openai') continue;
     const profile = selectDefinition(manifest.version, process.platform, process.arch, profiles);
     const target = path.join(root, profile.relativePath);
-    const hash = sha256(await readRegular(target));
-    const definition = selectBundle(profile, hash);
+    const definition = await locateInstallation(root, profile, true);
     const installation = await installationTargets(target, definition, true);
     const states = [];
     for (const item of installation) states.push(await inspect(item.target, item.definition));

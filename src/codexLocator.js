@@ -4,6 +4,8 @@ const path = require('node:path');
 const definitions = require('./patch/definitions');
 const { selectDefinition, selectBundle, sha256 } = require('./patch/integrity');
 const { readRegular } = require('./patch/backup');
+const { readReceipt } = require('./patch/receipt');
+const { structuralInstallation } = require('./patch/structuralInstallation');
 function samePath(left, right) {
   return process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right;
 }
@@ -22,8 +24,29 @@ async function locate(vscode, restoration = false, profiles = definitions) {
   if (!samePath(await fs.realpath(path.dirname(target)), path.dirname(target))) throw new Error('Refusing symlinked bundle directory');
   const current = await readRegular(target);
   const currentHash = sha256(current);
-  const definition = selectBundle(profile, currentHash);
+  const definition = await locateInstallation(root, profile, restoration, currentHash);
   return { target, definition, currentHash };
+}
+
+async function locateInstallation(root, profile, restoration = false, currentHash) {
+  const target = path.join(root, profile.relativePath);
+  if (!samePath(await fs.realpath(path.dirname(target)), path.dirname(target))) throw new Error('Refusing symlinked bundle directory');
+  if (await readReceipt(target, profile.version)) return structuralInstallation(root, profile, restoration);
+  const hash = currentHash || sha256(await readRegular(target));
+  // Keep exact legacy profiles for migration/restoration. New clean releases
+  // use structural checks when their bytes or asset names differ.
+  let legacy;
+  try { legacy = selectBundle(profile, hash); }
+  catch { /* An unknown hash or shared-host ambiguity is not a structural failure. */ }
+  if (legacy) {
+    try {
+      await installationTargets(target, legacy, true);
+      if (legacy.presentation || restoration || hash !== legacy.originalHash) return legacy;
+    } catch (error) {
+      if (hash !== legacy.originalHash) throw error;
+    }
+  }
+  return structuralInstallation(root, profile, restoration);
 }
 
 async function installationTargets(target, definition, restoration = false) {
@@ -49,4 +72,4 @@ async function installationTargets(target, definition, restoration = false) {
   }
   return targets;
 }
-module.exports = { locate, installationTargets };
+module.exports = { locate, installationTargets, locateInstallation };

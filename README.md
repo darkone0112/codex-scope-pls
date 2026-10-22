@@ -200,42 +200,32 @@ Version 0.3.6 and later filter presentation only. They leave all app-server and 
 requests, responses, complete thread lists, child-agent discovery, queue locks,
 IPC notifications and session restoration unchanged.
 
-The reviewed patch modifies exactly three files:
+The patch modifies three display files:
 
-* `out/extension.js`: adds a workspace/settings metadata tag when creating the
-  webview, sends preference changes to that view, and filters the native VS Code
-  session picker's display results.
-* The reviewed `app-initial` asset (`4bd9e54bcd58` or `5120fa5fe295`): filters
-  final desktop chat-row output. The older profile also guards the local, cloud,
-  pending-start and worktree row components called directly by VS Code's history
-  menu. Guards run after existing React hooks. They do not mutate rows,
-  summaries or shared lists. A dedicated display notification updates only the
-  metadata and its listeners.
-* The reviewed `header` asset (`5e09211ec02d` or `901453333583`): scopes
-  derived history entries before
-  preview selection, totals, in-progress counts, tabs and search. The original
-  queries, source arrays, entry objects and native action callbacks stay intact.
-  Optional project sections wrap rendered rows in the inline preview and menu.
+* `out/extension.js`: supplies workspace/settings metadata, delivers live
+  preference changes, and filters the native session picker's display results.
+* The `app-initial` asset containing the final chat-row renderer and the
+  webview origin/chunk parser: filters rendered rows and receives only our
+  namespaced display notification after the original message checks.
+* The `header` asset deriving history entries: filters before preview selection,
+  counts, tabs and search, and provides optional folder sections.
 
-`workspace` displays rows whose cwd exactly matches one of the workspace roots.
-Multi-root windows display the union. Empty windows preserve global local-chat
-visibility. **Show Cloud Chats Everywhere** controls cloud row visibility; cloud
-requests and their original responses still run normally.
+`workspace` displays rows whose cwd exactly matches a workspace root. Multi-root
+windows display the union. Empty windows preserve global local-chat visibility.
+Cloud visibility is independent of local mode. Backend lists and pagination
+remain unchanged.
 
-Display settings and roots update the history immediately after a command or
-configuration change. One reload is still needed when installing changed patch
-code. The three modified files must match their complete hashes and exact patch
-points. A fourth asset is checked only to remove the retired 0.3.5 submission
-patch when its exact hash and original backup are present. Fresh installations
-leave that fourth asset untouched.
-The GUI profiles cover the inspected 26.928.31416 / 26.5928.31416 build and
-the local 26.930.61225 build. The latter reuses the 26.930.51102 host bytes
-but has different webview assets, so the exact package version selects its GUI
-profile. Older host records without GUI assets remain available to restore
-their known previous patches; they do not enable filtering.
-The official Marketplace 26.5930.61225 Linux VSIX has different webview
-assets from local 26.930.61225 despite sharing the host hash. It remains a
-separate compatibility review.
+New Codex versions do not need a version or full-file hash added to this project.
+Acorn parses installed JavaScript locally to recognize the display boundaries,
+identifier relationships and compiler-cache layout. Asset filenames and generated
+identifiers are discovered from that installation. Unrelated edits elsewhere in
+the bundles can pass without a Scope Pls update. If a required structure is
+missing or ambiguous, no bundle is changed.
+
+Exact legacy profiles remain available for migration and restoration, including
+removal of the retired 0.3.5 submission patch. New structural installations touch
+only the three display targets. One reload is still needed after installing patch
+code; subsequent preference changes update the display immediately.
 
 ## Security
 
@@ -271,38 +261,37 @@ This advanced technique is known as:
 
 ### Minimal dependencies
 
-The target is **zero runtime npm dependencies**.
-
-Where practical, the implementation uses only the VS Code API and built-in Node.js modules.
-
-Fewer dependencies means less code to trust, less code to audit, and fewer supply-chain surprises.
+Acorn is the only runtime npm dependency, pinned in `package-lock.json` and
+included in the VSIX. It parses JavaScript without executing it. Node and VS Code
+have no built-in syntax-tree API suitable for validating minified patch targets;
+using a parser avoids implementing a JavaScript parser or guessing with regex.
+There are no runtime downloads or network clients.
 
 ## Safe patching
 
-If modifying the installed Codex extension becomes necessary, the patching system must fail closed.
+New release labels, changed full-file hashes and renamed generated identifiers
+are allowed when the required display structures still pass validation.
+Before changing anything, the extension verifies:
 
-Before changing anything, it verifies:
+* the local platform and workspace constraints;
+* ordinary, unlinked target files and non-symlinked directories;
+* exactly one matching host boundary, row/parser asset and history asset;
+* the original message-origin and chunk handling sequence;
+* the identifier relationships and cache layout used by each patch;
+* every exact replacement count and the generated output's syntax;
+* each original backup and any existing installation receipt.
 
-* the installed Codex platform and architecture;
-* the target file;
-* the original SHA-256;
-* all expected patch locations;
-* the exact match count;
-* whether the file is already patched;
-* whether the full Codex bundle has a reviewed SHA-256.
+A local `out/extension.js.codex-scope-pls.installation.json` receipt records the
+installed Codex version, three relative target paths, original SHA-256 values and
+accepted patched SHA-256 values. Hashes protect integrity and restoration; fresh
+original hashes do not need to appear in a shipped allowlist. Reapply accepts only
+those recorded originals or exact patched states. Unknown edits, partial patches,
+ambiguous targets or invalid receipts/backups abort before any bundle changes.
 
-If anything is unexpected:
-
-```text
-DO NOT PATCH
-```
-
-An unlisted version can proceed only when one host profile matches and all of
-its GUI assets match the reviewed hashes. If two builds share host bytes, the
-installed package version must select exactly one profile. Changed, unknown or
-ambiguous files remain untouched until compatibility is reviewed.
-
-A temporary loss of workspace filtering is preferable to breaking Codex.
+Structural compatibility is a narrower guarantee than a complete vendor-file
+allowlist: it checks the code we depend on, rather than authenticating an entire
+Codex release. A matching structure and valid syntax do not prove all runtime
+behavior. Changed integration structures still need review and regression tests.
 
 ### Backups
 
@@ -335,7 +324,7 @@ Codex Scope Pls: Restore Original Codex Extension
 
 No Codex session files are touched during patching or restoration.
 
-Disabling or uninstalling Codex Scope Pls restores a supported patched Codex bundle automatically and reloads the affected VS Code window. The uninstall hook is a second cleanup path when VS Code finalizes removal on restart. This removes workspace display filtering and cloud hiding, restoring all reviewed files. Every cleanup path verifies the exact bundle hash and its original backup before changing anything; an unknown or damaged bundle is left untouched rather than guessed at.
+Disabling or uninstalling Codex Scope Pls restores a supported patched Codex bundle automatically and reloads the affected VS Code window. The uninstall hook is a second cleanup path when VS Code finalizes removal on restart. This removes workspace display filtering and cloud hiding, restoring all reviewed files. Every cleanup path verifies the exact recorded bundle hashes and original backups before changing anything. Receipt-based restoration does not depend on the current structural recognizer. An unknown or damaged bundle is left untouched.
 
 ### Upgrading from request filtering
 
@@ -397,23 +386,18 @@ Codex Extension** from version 0.3.6 or newer for a known 0.3.5 installation,
 then reload every affected window. Its original backup for the fourth asset
 must exist.
 
-## Fail closed
+## Compatibility monitoring
 
-Compatibility logic deliberately prefers:
+The daily Marketplace watcher uses the same structural recognizer as the installed
+extension. A recognized new release is reported as compatible without adding hashes,
+creating a compatibility PR or publishing another Scope Pls release. A failed
+structural check opens one deduplicated compatibility issue with the failure reason.
+Download failures fail the workflow rather than being presented as incompatibility.
+Downloaded vendor code is never executed.
 
-```text
-"This Codex bundle is not compatible yet."
-```
-
-over:
-
-```text
-"Well, this regex matched something."
-```
-
-When OpenAI changes Codex internals, compatibility must be reviewed and tested before a new structure is accepted.
-
-Platform-specific compatibility profiles are kept isolated so those updates remain easy to audit.
+Failing structural or integrity checks leaves Codex untouched. A temporary loss of
+workspace filtering is preferable to breaking Codex. Updates that change a required
+integration point still require a focused compatibility fix.
 
 ## Diagnostics
 
@@ -454,10 +438,10 @@ git clone https://github.com/<your-user>/codex-scope-pls.git
 cd codex-scope-pls
 ```
 
-Install development dependencies if required:
+Install the pinned dependency:
 
 ```bash
-npm install
+npm ci
 ```
 
 Open in VS Code:

@@ -3,3 +3,6 @@
 !README.md
 !LICENSE
 !src/**
+!node_modules/acorn/package.json
+!node_modules/acorn/dist/acorn.js
+!node_modules/acorn/LICENSE

@@ -7,17 +7,15 @@ on:
     paths:
       - '.github/workflows/codex-compatibility-watch.yml'
       - 'scripts/check-codex-compatibility.js'
-      - 'scripts/add-codex-bundle.js'
+      - 'package*.json'
       - 'src/patch/**'
   schedule:
     - cron: '0 0 * * *'
   workflow_dispatch:
 
 permissions:
-  actions: write
-  contents: write
+  contents: read
   issues: write
-  pull-requests: write
 
 concurrency:
   group: codex-compatibility-watch-${{ github.repository }}
@@ -33,61 +31,24 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Install pinned dependencies
+        run: npm ci
       - name: Run local tests
         run: npm test
       - name: Inspect official Codex VSIX packages
-        run: node scripts/check-codex-compatibility.js --report "$RUNNER_TEMP/codex-compatibility.json" --proposal "$RUNNER_TEMP/codex-compatibility-proposal.json"
+        run: node scripts/check-codex-compatibility.js --report "$RUNNER_TEMP/codex-compatibility.json"
       - name: Add report to workflow summary
         if: always()
         run: |
           if [ -f "$RUNNER_TEMP/codex-compatibility.json.md" ]; then
             cat "$RUNNER_TEMP/codex-compatibility.json.md" >> "$GITHUB_STEP_SUMMARY"
           fi
-      - name: Create and merge a verified compatibility pull request
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          proposal="$RUNNER_TEMP/codex-compatibility-proposal.json"
-          if [ ! -f "$proposal" ]; then
-            exit 0
-          fi
-          node scripts/add-codex-bundle.js "$proposal"
-          npm test
-          npm run check
-          hash="$(node -p "require(process.argv[1]).originalHash" "$proposal")"
-          version="$(node -p "require(process.argv[1]).reviewedVersions[0]" "$proposal")"
-          branch="automation/codex-bundle-${hash:0:12}"
-          open_count="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$branch" --state open --json number --jq 'length')"
-          if [ "$open_count" = "0" ]; then
-            previous_count="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$branch" --state all --json number --jq 'length')"
-            if [ "$previous_count" != "0" ]; then
-              exit 0
-            fi
-            if git ls-remote --exit-code --heads origin "$branch" > /dev/null; then
-              gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$branch" --title "chore: review Codex $version compatibility" --body-file "$RUNNER_TEMP/codex-compatibility.json.md"
-            else
-              git switch -c "$branch"
-              git config user.name 'github-actions[bot]'
-              git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-              git add src/patch/bundles.json
-              git commit -m "chore: review Codex $version compatibility"
-              git push --set-upstream origin "$branch"
-              gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$branch" --title "chore: review Codex $version compatibility" --body-file "$RUNNER_TEMP/codex-compatibility.json.md"
-            fi
-          fi
-          git switch main
-          gh pr merge "$branch" --repo "$GITHUB_REPOSITORY" --merge --delete-branch
-          # A merge authenticated with GITHUB_TOKEN does not emit a push run.
-          # workflow_dispatch is the supported exception and keeps release
-          # packaging in the existing release workflow.
-          gh workflow run publish-release.yml --repo "$GITHUB_REPOSITORY" --ref main
       - name: Open one review issue for incompatible bundles
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           report="$RUNNER_TEMP/codex-compatibility.json"
-          proposal="$RUNNER_TEMP/codex-compatibility-proposal.json"
-          if [ ! -f "$report" ] || [ -f "$proposal" ]; then
+          if [ ! -f "$report" ]; then
             exit 0
           fi
           if node -e 'process.exit(require(process.argv[1]).requiresReview ? 0 : 1)' "$report"; then

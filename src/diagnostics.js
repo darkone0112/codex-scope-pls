@@ -19,8 +19,8 @@ async function diagnostics(vscode, context, lastResult) {
   try {
     const { target, definition } = await locate(vscode, true);
     result.target = target;
-    result.bundleCompatibility = 'exact SHA-256 match';
-    result.versionRecognition = definition.knownVersion ? 'reviewed version' : 'unlisted version with reviewed bundle';
+    result.bundleCompatibility = definition.structural ? 'recognized structure / local integrity receipt' : 'exact reviewed SHA-256 match';
+    result.versionRecognition = definition.structural ? 'version-independent structure' : definition.knownVersion ? 'reviewed version' : 'unlisted version with reviewed bundle';
     result.originalSHA256 = definition.originalHash;
     const candidate = await readRegular(target);
     result.currentSHA256 = sha256(candidate);

@@ -6,6 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const definitions = require('../src/patch/definitions');
 const { sha256, transform } = require('../src/patch/integrity');
+const { headerDefinition } = require('../src/patch/structuralPoints');
 const bundle = definitions[0].bundles[2];
 const fixture = name => fs.readFileSync(path.join(__dirname, 'fixtures', name));
 
@@ -54,7 +55,7 @@ function walk(node, predicate) {
     ...walk(node.props?.triggerButton, predicate)];
 }
 
-function harness({ brokenInlineReact = false } = {}) {
+function harness({ brokenInlineReact = false, structural = !brokenInlineReact } = {}) {
   const model = { mode: 'workspace', cloud: false, group: false, filter: 'recent', pending: [], worktrees: [] };
   const tag = { content: JSON.stringify({ mode: model.mode, roots: ['/a'], platform: process.platform, showCloudChats: model.cloud, groupChatsByProject: model.group }) };
   const listeners = new Map();
@@ -99,15 +100,15 @@ function harness({ brokenInlineReact = false } = {}) {
     _m: { postMessage: () => assert.fail('display preferences must not send webview requests') }
   };
   const header = fixture('headerPresentation.js');
-  const headerDefinition = { ...bundle.presentation.additionalTargets[0], originalHash: sha256(header) };
+  const headerPatch = structural ? headerDefinition(header) : { ...bundle.presentation.additionalTargets[0], originalHash: sha256(header) };
   if (brokenInlineReact) {
-    headerDefinition.points = headerDefinition.points.map(point => point.name !== 'inline history group subscription' ? point : {
+    headerPatch.points = headerPatch.points.map(point => point.name !== 'inline history group subscription' ? point : {
       ...point,
       after: point.after.replace('function codexScopePlsInlineReact(){return p()}\n', '')
         .replace('codexScopePlsInlineReact(),document', 'jt,document')
     });
   }
-  vm.runInNewContext(transform(header, headerDefinition).toString(), sandbox);
+  vm.runInNewContext(transform(header, headerPatch).toString(), sandbox);
   const messages = fixture('viewMessage.js');
   const messageDefinition = { originalHash: sha256(messages), points: bundle.presentation.points.filter(point => point.name === 'display preference notification') };
   vm.runInNewContext(transform(messages, messageDefinition).toString(), sandbox);

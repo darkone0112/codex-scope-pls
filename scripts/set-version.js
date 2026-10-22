@@ -6,3 +6,8 @@ const file = require.resolve('../package.json');
 const pkg = require(file);
 pkg.version = next;
 fs.writeFileSync(file, `${JSON.stringify(pkg, null, 2)}\n`);
+const lockFile = require.resolve('../package-lock.json');
+const lock = JSON.parse(fs.readFileSync(lockFile, 'utf8'));
+lock.version = next;
+lock.packages[''].version = next;
+fs.writeFileSync(lockFile, `${JSON.stringify(lock, null, 2)}\n`);

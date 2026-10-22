@@ -7,6 +7,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const definitions = require('../src/patch/definitions');
 const { sha256, transform } = require('../src/patch/integrity');
+const { recognize } = require('../src/patch/structuralInstallation');
 
 const GALLERY_QUERY = 'https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery';
 // Codex archives embed a native executable for each host and can be large.
@@ -107,6 +108,26 @@ function assessBundle(profile, bytes, viewBytes, additionalBytes = [], runtimeVe
   // files and an inspected rendering boundary, not a transport-shaped matcher.
   return { status: 'gui-review-required', hash, reason: 'Review host metadata and final GUI rendering targets' };
 }
+function assessInstallation(profile, host, assets, runtimeVersion) {
+  const reviewed = reviewedOriginal(profile, sha256(host), runtimeVersion);
+  const asset = relativePath => assets.find(item => item.relativePath === relativePath)?.bytes;
+  if (reviewed?.presentation) {
+    const exact = assessBundle(profile, host, asset(reviewed.presentation.relativePath),
+      (reviewed.presentation.additionalTargets || []).map(target => asset(target.relativePath)), runtimeVersion);
+    if (exact.status === 'reviewed-original') {
+      for (const target of [reviewed, reviewed.presentation, ...(reviewed.presentation.additionalTargets || [])]) {
+        syntaxCheck(transform(target === reviewed ? host : asset(target.relativePath), target));
+      }
+      return exact;
+    }
+  }
+  try {
+    const targets = recognize(host, assets);
+    return { status: 'recognized-structure', hash: sha256(host), viewHash: targets[1].originalHash };
+  } catch (error) {
+    return { status: 'incompatible-structure', hash: sha256(host), reason: error.message };
+  }
+}
 function syntaxCheck(bytes) {
   const file = path.join(os.tmpdir(), `codex-scope-pls-${process.pid}-${Date.now()}.js`);
   try {
@@ -130,9 +151,9 @@ async function queryVersions() {
   return extension.versions;
 }
 function reportMarkdown(report) {
-  const rows = report.results.map(result => `| ${result.profile} | ${result.version} | ${result.runtimeVersion || 'n/a'} | ${result.status} | \`${result.hash || 'n/a'}\` |`);
-  return ['# Codex compatibility watch', '', `Checked: ${report.checkedAt}`, '', '| Profile | Marketplace version | Installed package version | Result | Bundle SHA-256 |', '| --- | --- | --- | --- | --- |', ...rows, '',
-    'A review is required before changing trusted hashes or patch definitions. Downloaded VSIX files were inspected only; no executable was run.'].join('\n');
+  const rows = report.results.map(result => `| ${result.profile} | ${result.version} | ${result.runtimeVersion || 'n/a'} | ${result.status} | \`${result.hash || 'n/a'}\` | ${(result.reason || '').replace(/[|\r\n]/g, ' ').slice(0, 500)} |`);
+  return ['# Codex compatibility watch', '', `Checked: ${report.checkedAt}`, '', '| Profile | Marketplace version | Installed package version | Result | Bundle SHA-256 | Reason |', '| --- | --- | --- | --- | --- | --- |', ...rows, '',
+    'Recognized structures need no hash addition or Scope Pls release. Failed structural checks require review. Downloaded code was parsed only; no executable was run.'].join('\n');
 }
 async function inspectMarketplace() {
   const versions = await queryVersions();
@@ -152,24 +173,18 @@ async function inspectMarketplace() {
       if (typeof runtimeVersion !== 'string' || !/^\d[0-9A-Za-z.-]{0,127}$/.test(runtimeVersion)) {
         throw new Error('Official VSIX has an invalid package version');
       }
-      const reviewed = reviewedOriginal(profile, sha256(host), runtimeVersion);
-      const view = reviewed?.presentation
-        ? unzip(archive, `extension/${reviewed.presentation.relativePath}`) : undefined;
-      const additional = (reviewed?.presentation?.additionalTargets || []).map(target =>
-        unzip(archive, `extension/${target.relativePath}`));
-      const assessed = assessBundle(profile, host, view, additional, runtimeVersion);
-      if (assessed.status === 'reviewed-original') {
-        syntaxCheck(transform(host, reviewed));
-        syntaxCheck(transform(view, reviewed.presentation));
-        for (let index = 0; index < additional.length; index++) {
-          syntaxCheck(transform(additional[index], reviewed.presentation.additionalTargets[index]));
-        }
-      }
+      const listing = spawnSync('unzip', ['-Z1', archive], { encoding: 'utf8', maxBuffer: MAX_EXTRACTED_BYTES });
+      if (listing.status !== 0) throw new Error('Cannot list official VSIX assets');
+      const entries = listing.stdout.split('\n').filter(entry => /^extension\/webview\/assets\/(app-initial|header)-[a-f0-9]+\.js$/.test(entry));
+      if (entries.length > 64 || new Set(entries).size !== entries.length) throw new Error('Invalid VSIX asset listing');
+      const assets = entries.map(entry => ({ relativePath: entry.slice('extension/'.length), bytes: unzip(archive, entry) }));
+      if (assets.reduce((total, item) => total + item.bytes.length, 0) > 100 * 1024 * 1024) throw new Error('VSIX assets exceed size limit');
+      const assessed = assessInstallation(profile, host, assets, runtimeVersion);
       results.push({ profile: profileKey(profile), targetPlatform, version: version.version, runtimeVersion,
         status: assessed.status, hash: assessed.hash, viewHash: assessed.viewHash, reason: assessed.reason });
     }
     const report = { checkedAt: new Date().toISOString(), results };
-    report.requiresReview = results.some(result => result.status !== 'reviewed-original');
+    report.requiresReview = results.some(result => !['reviewed-original', 'recognized-structure'].includes(result.status));
     return report;
   } finally {
     await fs.rm(directory, { recursive: true, force: true });
@@ -185,4 +200,4 @@ async function main() {
   process.stdout.write(`${JSON.stringify(report)}\n`);
 }
 if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });
-module.exports = { assessBundle, reportMarkdown, verifyManifest };
+module.exports = { assessBundle, assessInstallation, reportMarkdown, verifyManifest };

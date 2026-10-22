@@ -49,7 +49,7 @@ test('shared host hash selects only the matching GUI version and refuses unknown
   }
 });
 
-test('an unlisted version is accepted only with an exact reviewed original or patch hash', async t => {
+test('a legacy transport fixture requires an exact reviewed original or patch hash', async t => {
   const original = await fs.readFile(path.join(__dirname, 'fixtures/provider.js'));
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-platform-test-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
@@ -64,13 +64,13 @@ test('an unlisted version is accepted only with an exact reviewed original or pa
   const bundle = { ...definitions[0].bundles[0], originalHash: sha256(original), currentPatchedHashes: [], previousPatchedHashes: [] };
   bundle.currentPatchedHashes = [sha256(transform(original, bundle))];
   const profile = { ...definitions[0], bundles: [bundle] };
-  const located = await locate(vscode, false, [profile]);
+  const located = await locate(vscode, true, [profile]);
   assert.equal(located.target, path.join(await fs.realpath(directory), 'out/extension.js'));
   assert.equal(located.definition.knownVersion, false);
   await fs.writeFile(target, transform(original, located.definition));
-  assert.equal((await locate(vscode, false, [profile])).currentHash, bundle.currentPatchedHashes[0]);
+  assert.equal((await locate(vscode, true, [profile])).currentHash, bundle.currentPatchedHashes[0]);
   await fs.writeFile(target, Buffer.concat([original, Buffer.from('x')]));
-  await assert.rejects(locate(vscode, false, [profile]), /Unsupported Codex bundle SHA-256/);
+  await assert.rejects(locate(vscode, false, [profile]));
 });
 
 for (const d of definitions) test(`${d.platform}/${d.arch}: fixture apply/restore`, async t => {

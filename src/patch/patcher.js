@@ -4,13 +4,15 @@ const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { sha256, transform, count } = require('./integrity');
 const { readRegular, readBackup, ensureBackup } = require('./backup');
+const { saveReceipt } = require('./receipt');
 
 async function inspect(target, definition) {
   const current = await readRegular(target);
   const hash = sha256(current);
   const original = hash === definition.originalHash ? current : await readBackup(target, definition);
-  const patched = transform(original, definition);
-  const isCurrentPatch = current.equals(patched);
+  // Receipts restore exact recorded bytes without depending on today's matcher.
+  const patched = definition.receiptOnly ? current : transform(original, definition);
+  const isCurrentPatch = definition.receiptOnly ? definition.currentPatchedHashes.includes(hash) : current.equals(patched);
   const isPreviousPatch = (definition.previousPatchedHashes || []).includes(hash);
   if (!current.equals(original) && !isCurrentPatch && !isPreviousPatch) throw new Error('Unknown or partially patched bundle');
   const isPatched = !current.equals(original);
@@ -47,6 +49,7 @@ async function changeAll(targets, action) {
   if (!targets.length || new Set(targets.map(item => item.target)).size !== targets.length) {
     throw new Error('Invalid patch targets');
   }
+  if (action === 'apply' && targets.some(item => item.definition.receiptOnly)) throw new Error('Restoration receipt cannot apply a patch');
   const locks = [];
   const replaced = [];
   try {
@@ -70,6 +73,11 @@ async function changeAll(targets, action) {
     }
     for (const { target, state } of prepared) {
       if (!(await readRegular(target)).equals(state.current)) throw new Error('Target changed during operation');
+    }
+    // Publish recovery metadata only after every original and backup validates,
+    // before changing any bundle. It also describes interrupted mixed states.
+    if (action === 'apply' && targets[0].definition.receipt) {
+      await saveReceipt(targets[0].target, targets[0].definition.receipt);
     }
     // Upgrade replaces known prior revisions, including the retired submission
     // asset, before applying display points. Restore reverses target order.
