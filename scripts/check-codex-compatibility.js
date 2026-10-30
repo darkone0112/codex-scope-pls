@@ -7,7 +7,8 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const definitions = require('../src/patch/definitions');
 const { sha256, transform } = require('../src/patch/integrity');
-const { recognize } = require('../src/patch/structuralInstallation');
+const { recognize, discoverRoleModules } = require('../src/patch/structuralInstallation');
+const { assetPath } = require('../src/patch/moduleGraph');
 
 const GALLERY_QUERY = 'https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery';
 // Codex archives embed a native executable for each host and can be large.
@@ -128,6 +129,22 @@ function assessInstallation(profile, host, assets, runtimeVersion) {
     return { status: 'incompatible-structure', hash: sha256(host), reason: error.message };
   }
 }
+async function assessPackage(profile, host, read, runtimeVersion) {
+  try {
+    const reviewed = reviewedOriginal(profile, sha256(host), runtimeVersion);
+    if (reviewed?.presentation) {
+      try {
+        const assets = await Promise.all([reviewed.presentation, ...(reviewed.presentation.additionalTargets || [])]
+          .map(async target => ({ relativePath: target.relativePath, bytes: await read(target.relativePath) })));
+        const assessed = assessInstallation(profile, host, assets, runtimeVersion);
+        if (assessed.status === 'reviewed-original') return assessed;
+      } catch { /* Changed asset layout falls through to the same runtime discovery. */ }
+    }
+    return assessInstallation(profile, host, await discoverRoleModules(read), runtimeVersion);
+  } catch (error) {
+    return { status: 'incompatible-structure', hash: sha256(host), reason: error.message };
+  }
+}
 function syntaxCheck(bytes) {
   const file = path.join(os.tmpdir(), `codex-scope-pls-${process.pid}-${Date.now()}.js`);
   try {
@@ -175,11 +192,15 @@ async function inspectMarketplace() {
       }
       const listing = spawnSync('unzip', ['-Z1', archive], { encoding: 'utf8', maxBuffer: MAX_EXTRACTED_BYTES });
       if (listing.status !== 0) throw new Error('Cannot list official VSIX assets');
-      const entries = listing.stdout.split('\n').filter(entry => /^extension\/webview\/assets\/(app-initial|header)-[a-f0-9]+\.js$/.test(entry));
-      if (entries.length > 64 || new Set(entries).size !== entries.length) throw new Error('Invalid VSIX asset listing');
-      const assets = entries.map(entry => ({ relativePath: entry.slice('extension/'.length), bytes: unzip(archive, entry) }));
-      if (assets.reduce((total, item) => total + item.bytes.length, 0) > 100 * 1024 * 1024) throw new Error('VSIX assets exceed size limit');
-      const assessed = assessInstallation(profile, host, assets, runtimeVersion);
+      const entries = listing.stdout.split('\n').filter(entry => entry === 'extension/webview/index.html' ||
+        entry.startsWith('extension/') && assetPath(entry.slice('extension/'.length)));
+      if (entries.length > 20001 || new Set(entries).size !== entries.length) throw new Error('Invalid VSIX asset listing');
+      const available = new Set(entries);
+      const assessed = await assessPackage(profile, host, async relativePath => {
+        const entry = `extension/${relativePath}`;
+        if (!available.has(entry)) throw new Error('Required webview import is missing from VSIX');
+        return unzip(archive, entry);
+      }, runtimeVersion);
       results.push({ profile: profileKey(profile), targetPlatform, version: version.version, runtimeVersion,
         status: assessed.status, hash: assessed.hash, viewHash: assessed.viewHash, reason: assessed.reason });
     }
@@ -200,4 +221,4 @@ async function main() {
   process.stdout.write(`${JSON.stringify(report)}\n`);
 }
 if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });
-module.exports = { assessBundle, assessInstallation, reportMarkdown, verifyManifest };
+module.exports = { assessBundle, assessInstallation, assessPackage, reportMarkdown, verifyManifest };

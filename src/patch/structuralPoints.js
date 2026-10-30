@@ -100,12 +100,16 @@ function hostDefinition(bytes) {
 // Only identifier spelling and string quoting may vary.
 const messagePattern = stmt('function $parse($event,$window){let $source=$event.source,$origin=$window.location.origin;if($event.origin!==$origin||$source===$window&&$origin!==``&&$origin!==$nullOrigin&&$event.origin!==$origin)return null;let $data=$event.data;if($chunk($data)){let $received=$receiver($window).receive($data);if($received.type!==`passthrough`&&$received.acknowledgement!=null&&$api.postMessage({type:`chunked-message-ack`,transferId:$received.acknowledgement.transferId,sequence:$received.acknowledgement.sequence}),$received.type===`pending`)return null;$data=$received.message}return typeof $data!=`object`||!$data||!$valid($data)?null:$data}');
 const rowPattern = stmt('switch($entry.kind){case`remote`:{let $r;return $cache[$s0]!==$entry||$cache[$s1]!==$remote?($r=$remote($entry),$cache[$s0]=$entry,$cache[$s1]=$remote,$cache[$s2]=$r):$r=$cache[$s2],$r}case`local`:{let $l;return $cache[$s3]!==$entry||$cache[$s4]!==$local?($l=$local($entry),$cache[$s3]=$entry,$cache[$s4]=$local,$cache[$s5]=$l):$l=$cache[$s5],$l}}');
-function appDefinition(bytes) {
+function notificationDefinition(bytes) {
   const { source, tree } = sourceTree(bytes);
   const message = one(matches(tree, messagePattern), 'origin and chunk parser');
   const last = message.node.body.body.at(-1);
   const points = [point(source, message.node, 'display preference notification', [insertion(last.start,
     `\n${visibleSource}${helper('viewNotification.js')}\nif(codexScopePlsAcceptViewScope(${id(message.captures.$data)},document,${id(message.captures.$window)}))return null;\n`)])];
+  return definition(bytes, points);
+}
+function rowDefinition(bytes) {
+  const { source, tree } = sourceTree(bytes);
   const row = one(matches(tree, rowPattern), 'final row switch');
   const entry = id(row.captures.$entry);
   const slots = Array.from({ length: 6 }, (_, index) => row.captures[`$s${index}`].value);
@@ -118,12 +122,18 @@ function appDefinition(bytes) {
   const resolved = one(matches(fn.body, expr(`$store($selector,$key)??${id(declaration.id)}`), true), 'resolved row summary');
   const summary = one(nodes(fn.body, node => node.type === 'VariableDeclarator' && node.init === resolved.node, true), 'resolved summary binding');
   if (summary.end >= row.node.start) throw new Error('Summary is unavailable at row boundary');
-  points.push(point(source, fn, 'final row display', [insertion(row.node.start,
-    `\n${visibleSource}\nif(!codexScopePlsVisible(${entry},${id(summary.id)},codexScopePlsReadViewScope(document)))return null;\n`)]));
-  return definition(bytes, points);
+  return definition(bytes, [point(source, fn, 'final row display', [insertion(row.node.start,
+    `\n${visibleSource}\nif(!codexScopePlsVisible(${entry},${id(summary.id)},codexScopePlsReadViewScope(document)))return null;\n`)])]);
+}
+function combineDefinitions(bytes, definitions) {
+  return definition(bytes, definitions.flatMap(item => item.points));
+}
+function appDefinition(bytes) {
+  return combineDefinitions(bytes, [notificationDefinition(bytes), rowDefinition(bytes)]);
 }
 
-const mergedPattern = stmt('function $merge($tasks,$locals,$env){let $worktrees=$getWorktrees(),$pending=$atom($pendingAtom),$ids=(0,$react.useMemo)(()=>$locals.map($row=>$row.id),[$locals]),$clients=$select($clientAtom,$ids),$background=$getBackground(),$memo=(0,$react.useRef)(new Map);return(0,$react.useMemo)(()=>{let $entries=$reconcile($derive({tasks:$tasks,localConversations:$locals,pendingWorktrees:$worktrees,pendingThreadStarts:$pending,envForFilter:$env,threadSortKey:$sort,isBackgroundSubagentsEnabled:$background,clientThreadIdsByConversationId:$clients}),$memo.current);return $memo.current=new Map($entries.map($entry=>[$entry.key,$entry])),$entries},[$tasks,$env,$clients,$background,$locals,$worktrees,$pending])}');
+const mergedPatternSource = 'function $merge($tasks,$locals,$env){let $worktrees=$getWorktrees(),$pending=$atom($pendingAtom),$ids=(0,$react.useMemo)(()=>$locals.map($row=>$row.id),[$locals]),$clients=$select($clientAtom,$ids),$background=$getBackground(),$memo=(0,$react.useRef)(new Map);return(0,$react.useMemo)(()=>{let $entries=$reconcile($derive({tasks:$tasks,localConversations:$locals,pendingWorktrees:$worktrees,pendingThreadStarts:$pending,envForFilter:$env,threadSortKey:$sort,isBackgroundSubagentsEnabled:$background,clientThreadIdsByConversationId:$clients}),$memo.current);return $memo.current=new Map($entries.map($entry=>[$entry.key,$entry])),$entries},[$tasks,$env,$clients,$background,$locals,$worktrees,$pending])}';
+const mergedPattern = stmt(mergedPatternSource);
 
 function cacheGuard(fn, node, cache, edits, source) {
   const branch = one(nodes(fn.body, candidate => candidate.type === 'ConditionalExpression' &&
@@ -137,7 +147,10 @@ function cacheGuard(fn, node, cache, edits, source) {
 
 function headerDefinition(bytes) {
   const { source, tree } = sourceTree(bytes);
-  const merged = one(matches(tree, mergedPattern), 'derived history hook');
+  const mergedVariants = ['id', 'conversationId'].flatMap(key =>
+    matches(tree, key === 'id' ? mergedPattern : stmt(mergedPatternSource.replace('$row.id', '$row.conversationId')))
+      .map(found => ({ ...found, conversationKey: key })));
+  const merged = one(mergedVariants, 'derived history hook');
   const react = id(merged.captures.$react), mergeName = id(merged.captures.$merge);
   const memo = merged.node.body.body.at(-1).argument;
   const output = memo.arguments[0].body.body.at(-1).argument.expressions.at(-1);
@@ -157,9 +170,13 @@ function headerDefinition(bytes) {
   const menuEdits = [subscription(menu, reactNamespace(menu)), replacement(localList.init,
     `codexScopePlsHistoryConversations(${locals},${scopeName}).filter(${text(source, localList.init.arguments[0])})`)];
   const cache = cacheInfo(menu);
+  const key = merged.conversationKey;
+  const recent = key === 'id'
+    ? '$row.kind===`local`&&$active===($row.pendingThreadStart?.clientThreadId??$row.conversation?.id)'
+    : '$row.kind===`remote`?$remoteActive===$row.task.id:$active===($row.pendingThreadStart?.clientThreadId??$row.conversation?.conversationId)';
   const maps = [
-    expr('$rows.map($row=>(0,$jsx.jsx)($component,{item:$row,isActive:$row.kind===`local`&&$active===($row.pendingThreadStart?.clientThreadId??$row.conversation?.id),onClose:$close,onActiveArchiveStart:$archive},$row.key))'),
-    expr('$rows.map($row=>(0,$jsx.jsx)($component,{conversationId:$row.id,hostId:$row.hostId,updatedAt:$row.recencyAt??$row.updatedAt,isActive:$active===$row.id,onClose:$close,onActiveArchiveStart:$archive},$row.id))')
+    expr(`$rows.map($row=>(0,$jsx.jsx)($component,{item:$row,isActive:${recent},onClose:$close,onActiveArchiveStart:$archive},$row.key))`),
+    expr(`$rows.map($row=>(0,$jsx.jsx)($component,{conversationId:$row.${key},hostId:$row.hostId,updatedAt:$row.recencyAt??$row.updatedAt,isActive:$active===$row.${key},onClose:$close,onActiveArchiveStart:$archive},$row.${key}))`)
   ];
   for (const [index, pattern] of maps.entries()) {
     const found = one(matches(menu.body, pattern, true), 'history row map');
@@ -173,8 +190,24 @@ function headerDefinition(bytes) {
     nodes(node.body, item => item.type === 'Property' && item.key.name === 'id' &&
       (item.value.value === 'codex.recentTasksMenu.count' || item.value.quasis?.[0]?.value.cooked === 'codex.recentTasksMenu.count'), true).length === 1), 'progress count component');
   const count = one(matches(progress.body, expr('$cloud.length+$local.length'), true), 'progress count');
+  let localCount = `codexScopePlsHistoryConversations(${id(count.captures.$local)},${scopeName}).length`;
+  if (merged.conversationKey === 'conversationId') {
+    const data = one(nodes(progress.body, node => node.type === 'VariableDeclarator' && node.id.type === 'ObjectPattern' &&
+      node.id.properties.some(property => property.key?.name === 'data'), true), 'progress source conversations');
+    const sourceRows = id(one(data.id.properties.filter(property => property.key?.name === 'data'), 'progress data binding').value);
+    const projectionPattern = stmt('function $project($conversation){return{hostId:$conversation.hostId,threadId:$conversation.conversationId}}');
+    const projection = one(matches(progress.body, expr('$keys=$locals.map($project)'), true).filter(found =>
+      nodes(tree, node => node.type === 'FunctionDeclaration' && node.id.name === id(found.captures.$project) &&
+        match(projectionPattern, node)).length === 1), 'progress identity projection');
+    one(nodes(progress.body, node => node.type === 'VariableDeclarator' &&
+      node.id.name === id(projection.captures.$locals) && match(expr(`(${sourceRows}??[]).filter($predicate)`), node.init), true), 'progress local source');
+    one(nodes(progress.body, node => node.type === 'VariableDeclarator' && node.id.name === id(count.captures.$local) &&
+      node.init?.type === 'CallExpression' && node.init.arguments.length === 2 &&
+      node.init.arguments[1].name === id(projection.captures.$keys), true), 'progress identity count');
+    localCount = `codexScopePlsHistoryInProgress(${id(count.captures.$local)},${sourceRows},${scopeName}).length`;
+  }
   points.push(point(source, progress, 'visible progress count', [subscription(progress, reactNamespace(progress)), replacement(count.node,
-    `(${scopeName}==null||${scopeName}.showCloudChats?${id(count.captures.$cloud)}.length:0)+codexScopePlsHistoryConversations(${id(count.captures.$local)},${scopeName}).length`)]));
+    `(${scopeName}==null||${scopeName}.showCloudChats?${id(count.captures.$cloud)}.length:0)+${localCount}`)]));
 
   const inline = functionWithProps(tree, ['mergedTasks', 'tasksQuery']);
   const rendered = one(matches(inline.body, expr('$rows=$preview.map($callback)'), true), 'inline row map');
@@ -188,4 +221,4 @@ function headerDefinition(bytes) {
   points.push(point(source, inline, 'inline folder sections', inlineEdits, `function codexScopePlsInlineReact(){return ${react}}\n`));
   return definition(bytes, points);
 }
-module.exports = { hostDefinition, appDefinition, headerDefinition };
+module.exports = { hostDefinition, appDefinition, notificationDefinition, rowDefinition, headerDefinition, combineDefinitions };

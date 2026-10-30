@@ -200,15 +200,30 @@ Version 0.3.6 and later filter presentation only. They leave all app-server and 
 requests, responses, complete thread lists, child-agent discovery, queue locks,
 IPC notifications and session restoration unchanged.
 
-The patch modifies three display files:
+The patch recognizes four roles, allowing the webview roles to share a file or
+occupy separate files:
 
-* `out/extension.js`: supplies workspace/settings metadata, delivers live
-  preference changes, and filters the native session picker's display results.
-* The `app-initial` asset containing the final chat-row renderer and the
-  webview origin/chunk parser: filters rendered rows and receives only our
-  namespaced display notification after the original message checks.
-* The `header` asset deriving history entries: filters before preview selection,
-  counts, tabs and search, and provides optional folder sections.
+* `out/extension.js`: workspace/settings metadata, live preference delivery and
+  the native session picker's display results.
+* Notifications: our display message is consumed after the original webview
+  origin and chunk checks.
+* Rows: the final chat-row renderer filters only its displayed output.
+* History: derived entries are scoped before preview selection, counts, tabs
+  and search; optional folder sections wrap rendered rows.
+
+Discovery starts at the external module scripts in `webview/index.html` and follows
+parsed local imports and re-exports, including literal dynamic imports. It does not
+require `app-initial`, `header` or content-hash filename prefixes. Each import-distance
+layer is completed before checking for one recognized instance of every role. Once
+all roles are found, deeper optional routes are not traversed. Duplicate recognized
+roles in the inspected graph fail closed. Unreferenced files do not select targets.
+
+Reads are confined to installed webview assets, with limits of 20,000 modules,
+25 MiB per module and 768 MiB cumulatively. Only candidate modules are retained.
+The inspected build contains about 17,600 JavaScript chunks, including translations;
+first-time discovery can take tens of seconds. Reapply and restore use the receipt's
+verified target files instead of traversing the graph again. Computed imports are
+never evaluated; an undiscoverable required role causes refusal.
 
 `workspace` displays rows whose cwd exactly matches a workspace root. Multi-root
 windows display the union. Empty windows preserve global local-chat visibility.
@@ -224,7 +239,7 @@ missing or ambiguous, no bundle is changed.
 
 Exact legacy profiles remain available for migration and restoration, including
 removal of the retired 0.3.5 submission patch. New structural installations touch
-only the three display targets. One reload is still needed after installing patch
+only the files containing the verified roles. One reload is still needed after installing patch
 code; subsequent preference changes update the display immediately.
 
 ## Security
@@ -275,15 +290,16 @@ Before changing anything, the extension verifies:
 
 * the local platform and workspace constraints;
 * ordinary, unlinked target files and non-symlinked directories;
-* exactly one matching host boundary, row/parser asset and history asset;
+* exactly one recognized instance of each required role in the inspected startup graph;
 * the original message-origin and chunk handling sequence;
 * the identifier relationships and cache layout used by each patch;
 * every exact replacement count and the generated output's syntax;
 * each original backup and any existing installation receipt.
 
 A local `out/extension.js.codex-scope-pls.installation.json` receipt records the
-installed Codex version, three relative target paths, original SHA-256 values and
-accepted patched SHA-256 values. Hashes protect integrity and restoration; fresh
+installed Codex version, roles, constrained relative target paths, original SHA-256
+values and accepted patched SHA-256 values. Schema 2 supports two to four target
+files. Schema 1 receipts from 0.3.9 remain valid for restoration and migrate on reapply. Hashes protect integrity and restoration; fresh
 original hashes do not need to appear in a shipped allowlist. Reapply accepts only
 those recorded originals or exact patched states. Unknown edits, partial patches,
 ambiguous targets or invalid receipts/backups abort before any bundle changes.
@@ -386,10 +402,16 @@ Codex Extension** from version 0.3.6 or newer for a known 0.3.5 installation,
 then reload every affected window. Its original backup for the fourth asset
 must exist.
 
+Version 0.3.10 supports the inspected 26.1021.22027 layout, with separate
+notification and row modules. It also supports that header's `conversationId`
+identity field, active remote chat expression and progress identity queries.
+Progress counts resolve cwd from the already loaded conversation summaries;
+backend queries and their results remain unchanged.
+
 ## Compatibility monitoring
 
-The daily Marketplace watcher uses the same structural recognizer as the installed
-extension. A recognized new release is reported as compatible without adding hashes,
+The daily Marketplace watcher follows the same import graph and uses the same
+structural recognizer as the installed extension. A recognized new release is reported as compatible without adding hashes,
 creating a compatibility PR or publishing another Scope Pls release. A failed
 structural check opens one deduplicated compatibility issue with the failure reason.
 Download failures fail the workflow rather than being presented as incompatibility.

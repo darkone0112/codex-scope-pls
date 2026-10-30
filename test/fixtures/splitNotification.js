@@ -1,0 +1,2 @@
+// Copied Codex 26.1021.22027 origin/chunk parser.
+function d(e,t){let n=e.source,r=t.location.origin;if(e.origin!==r||n===t&&r!==``&&r!==h&&e.origin!==r)return null;let i=e.data;if(m(i)){let e=f(t).receive(i);if(e.type!==`passthrough`&&e.acknowledgement!=null&&c.postMessage({type:`chunked-message-ack`,transferId:e.acknowledgement.transferId,sequence:e.acknowledgement.sequence}),e.type===`pending`)return null;i=e.message}return typeof i!=`object`||!i||!p(i)?null:i}

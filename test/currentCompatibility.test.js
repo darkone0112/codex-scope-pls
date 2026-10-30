@@ -8,6 +8,12 @@ const definitions = require('../src/patch/definitions');
 const { sha256, transform } = require('../src/patch/integrity');
 
 const current = definitions[0].bundles[4];
+
+test('legacy header output keeps its reviewed 0.3.9 fixture hash', () => {
+  const source = fs.readFileSync(path.join(__dirname, 'fixtures/headerPresentation.js'));
+  const definition = { ...definitions[0].bundles[2].presentation.additionalTargets[0], originalHash: sha256(source) };
+  assert.equal(sha256(transform(source, definition)), '5250e3782729d65ddace9ef761a06b7dbb0a71e4a5aa5a991991ffcf8bf60e14');
+});
 const scope = (mode = 'workspace') => JSON.stringify({
   mode, roots: ['/a'], platform: 'linux', showCloudChats: false
 });

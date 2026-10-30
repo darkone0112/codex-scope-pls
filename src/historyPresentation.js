@@ -15,7 +15,7 @@ function codexScopePlsUseViewScope(react, document, window) {
 function codexScopePlsHistoryEntries(entries, scope) {
   if (!scope) return entries;
   return entries.filter(entry => codexScopePlsVisible({ kind: entry.kind,
-    conversationId: entry.conversation?.id,
+    conversationId: entry.conversation?.conversationId ?? entry.conversation?.id,
     cwd: entry.conversation?.cwd ?? entry.pendingThreadStart?.task.cwd ??
       entry.pendingWorktree?.sourceWorkspaceRoot
   }, null, scope));
@@ -24,7 +24,18 @@ function codexScopePlsHistoryEntries(entries, scope) {
 function codexScopePlsHistoryConversations(conversations, scope) {
   if (!scope) return conversations;
   return conversations.filter(conversation =>
-    codexScopePlsVisible({ kind: 'local', conversationId: conversation.id }, conversation, scope));
+    codexScopePlsVisible({ kind: 'local', conversationId: conversation.conversationId ?? conversation.id }, conversation, scope));
 }
 
-module.exports = { codexScopePlsUseViewScope, codexScopePlsHistoryEntries, codexScopePlsHistoryConversations };
+// Newer headers query progress by host/thread identity instead of returning
+// conversation summaries. Resolve cwd from the already loaded display list.
+function codexScopePlsHistoryInProgress(keys, conversations, scope) {
+  if (!scope) return keys;
+  return keys.filter(key => {
+    const conversation = conversations.find(item => item.hostId === key.hostId &&
+      (item.conversationId ?? item.id) === key.threadId);
+    return codexScopePlsVisible({ kind: 'local', conversationId: key.threadId }, conversation, scope);
+  });
+}
+
+module.exports = { codexScopePlsUseViewScope, codexScopePlsHistoryEntries, codexScopePlsHistoryConversations, codexScopePlsHistoryInProgress };

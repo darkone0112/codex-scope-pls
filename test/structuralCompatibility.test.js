@@ -36,6 +36,8 @@ async function installation(t, { rename = false } = {}) {
     return Buffer.from(`${source}\n// unrelated release ${index}\n`);
   });
   for (const [index, relativePath] of paths.entries()) await fs.writeFile(path.join(root, relativePath), originals[index]);
+  await fs.writeFile(path.join(root, 'webview/index.html'), '<script type="module" src="./assets/entry.js"></script>');
+  await fs.writeFile(path.join(root, 'webview/assets/entry.js'), 'import "./app-initial-abcdef.js";import "./header-fedcba.js";');
   const profile = selectDefinition('99.123.456', process.platform, process.arch, profiles);
   const resolve = async restoration => {
     const definition = await locateInstallation(root, profile, restoration);
@@ -117,7 +119,10 @@ test('a broken last target, duplicate asset or changed origin check leaves every
   for (const fault of ['header', 'duplicate', 'origin', 'syntax', 'symlink']) {
     const f = await installation(t);
     if (fault === 'header') await fs.writeFile(path.join(f.root, paths[2]), f.originals[2].toString().replace('pendingThreadStarts:', 'changedPendingThreads:'));
-    if (fault === 'duplicate') await fs.writeFile(path.join(f.root, 'webview/assets/header-aabbcc.js'), f.originals[2]);
+    if (fault === 'duplicate') {
+      await fs.writeFile(path.join(f.root, 'webview/assets/header-aabbcc.js'), f.originals[2]);
+      await fs.appendFile(path.join(f.root, 'webview/assets/entry.js'), 'import "./header-aabbcc.js";');
+    }
     if (fault === 'origin') await fs.writeFile(path.join(f.root, paths[1]), f.originals[1].toString().replace('e.origin!==r', 'e.origin===r'));
     if (fault === 'syntax') await fs.appendFile(path.join(f.root, paths[0]), '{broken');
     if (fault === 'symlink') {

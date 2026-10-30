@@ -11,7 +11,9 @@ const scope = staticSource('viewScope.js', '\nmodule.exports = { codexScopePlsVi
 const visibility = staticSource('viewVisibility.js', '\nmodule.exports = { codexScopePlsVisible, codexScopePlsReadViewScope };\n');
 const updates = staticSource('viewUpdates.js', '\nmodule.exports = { codexScopePlsSubscribeView };\n');
 const notification = staticSource('viewNotification.js', '\nmodule.exports = { codexScopePlsAcceptViewScope };\n');
-const history = staticSource('historyPresentation.js', '\nmodule.exports = { codexScopePlsUseViewScope, codexScopePlsHistoryEntries, codexScopePlsHistoryConversations };\n');
+// Preserve historical bytes: exact legacy hashes must remain recognizable after
+// reapply. New schema adapters are injected by structuralPoints instead.
+const history = staticSource('patch/legacyHistoryPresentation.js', '\nmodule.exports = { codexScopePlsUseViewScope, codexScopePlsHistoryEntries, codexScopePlsHistoryConversations };\n');
 const groups = staticSource('historyGroups.js', '\nmodule.exports = { codexScopePlsGroupHistoryRows };\n');
 
 function hostPoints(bundle) {

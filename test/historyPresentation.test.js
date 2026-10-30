@@ -55,7 +55,7 @@ function walk(node, predicate) {
     ...walk(node.props?.triggerButton, predicate)];
 }
 
-function harness({ brokenInlineReact = false, structural = !brokenInlineReact } = {}) {
+function harness({ brokenInlineReact = false, structural = !brokenInlineReact, current = false } = {}) {
   const model = { mode: 'workspace', cloud: false, group: false, filter: 'recent', pending: [], worktrees: [] };
   const tag = { content: JSON.stringify({ mode: model.mode, roots: ['/a'], platform: process.platform, showCloudChats: model.cloud, groupChatsByProject: model.group }) };
   const listeners = new Map();
@@ -66,8 +66,8 @@ function harness({ brokenInlineReact = false, structural = !brokenInlineReact } 
   const document = { querySelector: () => tag };
   const runtime = hooks(window);
   const rows = Object.freeze([
-    ...Array.from({ length: 5 }, (_, index) => Object.freeze({ id: `b${index}`, title: `b${index}`, cwd: '/b', createdAt: 1000 - index, updatedAt: 1000 - index })),
-    ...Array.from({ length: 4 }, (_, index) => Object.freeze({ id: `a${index}`, title: `a${index}`, cwd: '/a', createdAt: 100 - index, updatedAt: 100 - index }))
+    ...Array.from({ length: 5 }, (_, index) => Object.freeze({ [current ? 'conversationId' : 'id']: `b${index}`, hostId: 'local', title: `b${index}`, cwd: '/b', createdAt: 1000 - index, updatedAt: 1000 - index })),
+    ...Array.from({ length: 4 }, (_, index) => Object.freeze({ [current ? 'conversationId' : 'id']: `a${index}`, hostId: 'local', title: `a${index}`, cwd: '/a', createdAt: 100 - index, updatedAt: 100 - index }))
   ]);
   const tasks = Object.freeze([Object.freeze({ id: 'cloud', title: 'cloud', created_at: 2,
     task_status_display: Object.freeze({ latest_turn_status_display: Object.freeze({ turn_status: 'in_progress' }) }) })]);
@@ -99,7 +99,26 @@ function harness({ brokenInlineReact = false, structural = !brokenInlineReact } 
     xe: close => close, m: () => '', module: { exports: {} }, r0e: () => false, i0e: 'null',
     _m: { postMessage: () => assert.fail('display preferences must not send webview requests') }
   };
-  const header = fixture('headerPresentation.js');
+  if (current) Object.assign(sandbox, {
+    xn: runtime.react, An: runtime.react, Rn: runtime.react,
+    It: { c: runtime.react.c }, kn: { c: runtime.react.c }, Ln: { c: runtime.react.c },
+    bn: sandbox.hn, Lt: sandbox.Mt, Ae: () => model.worktrees, K: 'pending', ie: 'ids', le: 'updated_at',
+    te: atom => atom === 'pending' ? model.pending : atom === 'filter' ? model.filter : null,
+    x: (atom, keys) => atom === 'ids' ? new Map() : atom === 'titles'
+      ? keys.map(key => ({ ...key, title: rows.find(row => row.conversationId === key.threadId)?.title }))
+      : keys.filter(key => model.inProgress?.has(key.threadId)), Dt: 'progress', Ot: 'titles',
+    Je: () => false, H: () => false, me: id => `remote:${id}`, he: id => `local:${id}`, n: { error: message => assert.fail(message) },
+    Ke: () => () => {}, ne: () => ({ pathname: '/' }), je: () => ({ cancelPendingWorktree() {} }), A: class extends Error {},
+    b: () => ({ set: (_atom, value) => { model.filter = value; } }), T: 'scope', ee: () => intl, de: () => ({ authMethod: 'chatgpt' }),
+    zt: 'filter', Bt: 'environment', E: () => null, Re: () => ({ data: [] }),
+    ke: (title, search) => (title ?? '').toLowerCase().includes(search),
+    vt: () => ({ data: rows }), Fe: () => query, In: () => true, O: () => false, z: close => close, zn: 'unread',
+    xe: { Section: 'section' }, v: 'message', F: 'button', ft: 'cloudRow', dt: 'worktreeRow', ot: 'localRow', pt: 'pendingRow', gt: 'timestamp',
+    Ht: 'search', rn: 'typeFilter', Qt: 'environmentFilter', jn: 'localTabRow', Mn: 'mixedRow',
+    On: 'error', Dn: 'loading', dn: 'noSearchResults', Kt: 'empty', q: 'tooltip', re: 'spinner', ae: 'icon',
+    B: 'popover', oe: 'tooltip', Ce: 'popover', Oe: 'icon', Q: sandbox.Q
+  });
+  const header = fixture(current ? 'splitHeader.js' : 'headerPresentation.js');
   const headerPatch = structural ? headerDefinition(header) : { ...bundle.presentation.additionalTargets[0], originalHash: sha256(header) };
   if (brokenInlineReact) {
     headerPatch.points = headerPatch.points.map(point => point.name !== 'inline history group subscription' ? point : {
@@ -116,9 +135,9 @@ function harness({ brokenInlineReact = false, structural = !brokenInlineReact } 
     const scope = { mode: model.mode, roots: ['/a'], platform: process.platform, showCloudChats: model.cloud, groupChatsByProject: model.group };
     assert.equal(sandbox.e0e({ origin: window.location.origin, source: null, data: { type: 'codex-scope-pls-view-scope', scope } }, window), null);
   };
-  const merged = () => runtime.render(sandbox.fn, tasks, rows, null);
-  const preview = () => runtime.render(sandbox.Et, { mergedTasks: merged(), tasksQuery: query });
-  const menu = () => runtime.render(sandbox.vn, { cloudtasksQuery: query, localConversations: rows, onClose() {} });
+  const merged = () => runtime.render(current ? sandbox._n : sandbox.fn, tasks, rows, null);
+  const preview = () => runtime.render(current ? sandbox.At : sandbox.Et, { mergedTasks: merged(), tasksQuery: query });
+  const menu = () => runtime.render(current ? sandbox.Cn : sandbox.vn, { cloudtasksQuery: query, localConversations: rows, onClose() {} });
   return { model, rows, tasks, sandbox, runtime, update, merged, preview, menu, tag, listeners, document, window };
 }
 
@@ -134,6 +153,35 @@ test('actual header scopes before preview slicing, totals, tabs and search', () 
   const result = walk(h.menu(), node => node.type === 'localTabRow');
   assert.deepEqual(result.map(node => node.props.conversationId), ['a2']);
   assert.equal(h.rows.length, 9); assert.equal(h.tasks.length, 1);
+});
+
+test('current split header preserves conversationId filtering, native search and live grouping', () => {
+  const h = harness({ current: true });
+  assert.deepEqual(walk(h.preview(), node => node.type === 'localRow').map(node => node.props.conversationId), ['a0', 'a1', 'a2']);
+  assert.equal(walk(h.preview(), node => node.props?.id === 'header.recentTasks.seeAll')[0].props.values.total, 4);
+  h.model.filter = 'local';
+  assert.equal(walk(h.menu(), node => node.type === 'localTabRow').length, 4);
+  walk(h.menu(), node => node.type === 'search')[0].props.onQueryChange('a2');
+  assert.deepEqual(walk(h.menu(), node => node.type === 'localTabRow').map(node => node.props.conversationId), ['a2']);
+  walk(h.menu(), node => node.type === 'search')[0].props.onQueryChange('');
+  h.model.filter = 'recent'; h.model.mode = 'all'; h.model.group = true; h.update();
+  assert.deepEqual(walk(h.menu(), node => node.type === 'h3').map(node => node.props.children), ['/b', '/a']);
+  assert.equal(walk(h.menu(), node => node.type === 'mixedRow').length, 9);
+  h.model.group = false; h.update();
+  assert.equal(walk(h.menu(), node => node.type === 'h3').length, 0);
+  h.model.cloud = true; h.update();
+  assert.equal(h.merged().length, 10);
+  assert.equal(h.rows.length, 9);
+});
+
+test('current progress identity queries count only visible loaded conversations', () => {
+  const h = harness({ current: true });
+  h.model.inProgress = new Set(['b0', 'b1', 'a0']);
+  const render = () => h.runtime.render(h.sandbox.Pn);
+  const label = () => walk(render(), node => node.props?.['aria-label']?.message === 'codex.recentTasksMenu.trigger')[0].props['aria-label'].count;
+  assert.equal(label(), 1);
+  h.model.mode = 'all'; h.update(); assert.equal(label(), 3);
+  h.model.mode = 'workspace'; h.model.cloud = true; h.update(); assert.equal(label(), 2);
 });
 
 test('inline preview resolves React outside its shadowing locals, including the empty startup state', () => {

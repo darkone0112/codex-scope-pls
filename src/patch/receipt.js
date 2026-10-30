@@ -3,21 +3,31 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { readRegular } = require('./backup');
+const { assetPath } = require('./moduleGraph');
 
 function receiptPath(host) { return `${host}.codex-scope-pls.installation.json`; }
 function validate(receipt, version) {
   const hash = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
-  if (receipt?.schema !== 1 || typeof version !== 'string' || !/^\d[0-9A-Za-z.-]{0,127}$/.test(version) ||
-    receipt.version !== version || !Array.isArray(receipt.targets) || receipt.targets.length !== 3 ||
+  if (![1, 2].includes(receipt?.schema) || typeof version !== 'string' || !/^\d[0-9A-Za-z.-]{0,127}$/.test(version) ||
+    receipt.version !== version || !Array.isArray(receipt.targets) || receipt.targets.length < 2 || receipt.targets.length > 4 ||
     receipt.targets.some(target => !target || typeof target !== 'object' || Array.isArray(target))) {
     throw new Error('Invalid installation receipt');
   }
   const paths = receipt.targets.map(target => target.relativePath);
-  if (paths[0] !== 'out/extension.js' || !/^webview\/assets\/app-initial-[a-f0-9]+\.js$/.test(paths[1]) ||
-    !/^webview\/assets\/header-[a-f0-9]+\.js$/.test(paths[2]) || new Set(paths).size !== 3 ||
+  const legacyPaths = receipt.schema !== 1 || receipt.targets.length === 3 &&
+    /^webview\/assets\/app-initial-[a-f0-9]+\.js$/.test(paths[1]) && /^webview\/assets\/header-[a-f0-9]+\.js$/.test(paths[2]);
+  if (paths[0] !== 'out/extension.js' || !paths.slice(1).every(assetPath) || !legacyPaths || new Set(paths).size !== paths.length ||
     receipt.targets.some(target => !hash(target.originalHash) || !Array.isArray(target.patchedHashes) ||
       target.patchedHashes.length < 1 || target.patchedHashes.length > 16 || !target.patchedHashes.every(hash))) {
     throw new Error('Invalid installation receipt targets');
+  }
+  if (receipt.schema === 2) {
+    const roles = receipt.targets.flatMap(target => Array.isArray(target.roles) ? target.roles : []);
+    if (receipt.targets.some(target => !Array.isArray(target.roles) || target.roles.length === 0) ||
+      receipt.targets[0].roles.length !== 1 || receipt.targets[0].roles[0] !== 'host' || roles.length !== 4 ||
+      ['host', 'notifications', 'rows', 'history'].some(role => roles.filter(value => value === role).length !== 1)) {
+      throw new Error('Invalid installation receipt roles');
+    }
   }
   return receipt;
 }
