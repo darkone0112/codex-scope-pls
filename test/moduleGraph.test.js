@@ -17,11 +17,12 @@ const { parse } = require('../src/patch/structure');
 
 async function fixtures() {
   const read = name => fs.readFile(path.join(__dirname, 'fixtures', name), 'utf8');
-  const [host, app, header, splitHeader, notification] = await Promise.all([
-    read('structuralHost.js'), read('structuralApp.js'), read('structuralHeader.js'), read('splitHeader.js'), read('splitNotification.js')
+  const [host, app, header, splitHeader, notification, localHeader, localRow] = await Promise.all([
+    read('structuralHost.js'), read('structuralApp.js'), read('structuralHeader.js'), read('splitHeader.js'), read('splitNotification.js'),
+    read('localOnlyHeader.js'), read('localOnlyRow.js')
   ]);
   const row = parse(app).body.find(node => node.type === 'FunctionDeclaration' && node.id.name === 'row');
-  return { host, app, header, splitHeader, notification, row: app.slice(row.start, row.end) };
+  return { host, app, header, splitHeader, notification, localHeader, localRow, row: app.slice(row.start, row.end) };
 }
 function graphReader(files, reads = []) {
   return async file => {
@@ -32,7 +33,9 @@ function graphReader(files, reads = []) {
 }
 async function layout(kind) {
   const f = await fixtures();
-  const gui = kind === 'split' ? [
+  const gui = kind === 'local-only' ? [
+    ['webview/assets/local-ui.js', `${f.notification}\n${f.localRow}`], ['webview/assets/local-history.js', f.localHeader]
+  ] : kind === 'split' ? [
     ['webview/assets/nested/events.mjs', f.notification], ['webview/assets/items.js', f.row], ['webview/assets/history.js', f.splitHeader]
   ] : kind === 'single' ? [['webview/assets/everything.js', `${f.app}\n${f.header}`]] : [
     ['webview/assets/app-initial-abc.js', f.app], ['webview/assets/header-def.js', f.header]
@@ -54,7 +57,7 @@ async function temporaryInstallation(t, files) {
   return { root, profile, resolve };
 }
 
-for (const [kind, count] of [['combined', 3], ['split', 4], ['single', 2]]) {
+for (const [kind, count] of [['combined', 3], ['split', 4], ['single', 2], ['local-only', 3]]) {
   test(`${kind} layout discovers roles without filename prefixes, patches and restores ${count} targets`, async t => {
     const { files } = await layout(kind);
     const reads = [];

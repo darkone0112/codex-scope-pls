@@ -40,10 +40,10 @@ function definition(bytes, points) {
   result.currentPatchedHashes = [sha256(patched)];
   return result;
 }
-function functionWithProps(tree, props) {
+function functionWithProps(tree, props, accept = () => true) {
   return one(nodes(tree, node => node.type === 'FunctionDeclaration' && node.params.length === 1 &&
     nodes(node.body, child => child.type === 'VariableDeclarator' && child.id.type === 'ObjectPattern' &&
-      props.every(name => child.id.properties.some(property => property.key?.name === name)), true).length === 1), props.join('/'));
+      props.every(name => child.id.properties.some(property => property.key?.name === name)), true).length === 1 && accept(node)), props.join('/'));
 }
 function propertyBinding(fn, name) {
   return id(one(nodes(fn.body, node => node.type === 'Property' && node.key.name === name && node.value.type === 'Identifier', true), name).value);
@@ -100,6 +100,7 @@ function hostDefinition(bytes) {
 // Only identifier spelling and string quoting may vary.
 const messagePattern = stmt('function $parse($event,$window){let $source=$event.source,$origin=$window.location.origin;if($event.origin!==$origin||$source===$window&&$origin!==``&&$origin!==$nullOrigin&&$event.origin!==$origin)return null;let $data=$event.data;if($chunk($data)){let $received=$receiver($window).receive($data);if($received.type!==`passthrough`&&$received.acknowledgement!=null&&$api.postMessage({type:`chunked-message-ack`,transferId:$received.acknowledgement.transferId,sequence:$received.acknowledgement.sequence}),$received.type===`pending`)return null;$data=$received.message}return typeof $data!=`object`||!$data||!$valid($data)?null:$data}');
 const rowPattern = stmt('switch($entry.kind){case`remote`:{let $r;return $cache[$s0]!==$entry||$cache[$s1]!==$remote?($r=$remote($entry),$cache[$s0]=$entry,$cache[$s1]=$remote,$cache[$s2]=$r):$r=$cache[$s2],$r}case`local`:{let $l;return $cache[$s3]!==$entry||$cache[$s4]!==$local?($l=$local($entry),$cache[$s3]=$entry,$cache[$s4]=$local,$cache[$s5]=$l):$l=$cache[$s5],$l}}');
+const localRowReturn = stmt('return $cache[$s0]!==$entry||$cache[$s1]!==$render?($result=$render($entry),$cache[$s0]=$entry,$cache[$s1]=$render,$cache[$s2]=$result):$result=$cache[$s2],$result;');
 function notificationDefinition(bytes) {
   const { source, tree } = sourceTree(bytes);
   const message = one(matches(tree, messagePattern), 'origin and chunk parser');
@@ -110,7 +111,33 @@ function notificationDefinition(bytes) {
 }
 function rowDefinition(bytes) {
   const { source, tree } = sourceTree(bytes);
-  const row = one(matches(tree, rowPattern), 'final row switch');
+  const switched = matches(tree, rowPattern);
+  const local = nodes(tree, node => node.type === 'FunctionDeclaration').flatMap(fn => {
+    const terminal = fn.body.body.at(-1), captures = match(localRowReturn, terminal);
+    if (!captures) return [];
+    const entry = id(captures.$entry);
+    const props = nodes(fn.body, node => node.type === 'VariableDeclarator' && node.id.type === 'ObjectPattern' &&
+      node.id.properties.some(property => property.key?.name === 'entry' && property.value.name === entry), true);
+    if (props.length !== 1 || matches(fn.body, expr(`${entry}.conversationId`), true).length < 1 ||
+      matches(fn.body, expr(`${entry}.summary??null`), true).length !== 1) return [];
+    return [{ fn, terminal, captures }];
+  });
+  one([...switched, ...local], 'final row boundary');
+  if (local.length) {
+    const { fn, terminal, captures } = local[0], entry = id(captures.$entry);
+    const cache = cacheInfo(fn);
+    const slots = [captures.$s0, captures.$s1, captures.$s2].map(node => node.value);
+    if (cache.cache !== id(captures.$cache) || !slots.every((slot, i) => Number.isInteger(slot) && slot === slots[0] + i) ||
+      slots[0] < 0 || slots[2] >= cache.size.value) throw new Error('Invalid local row cache boundary');
+    const fallback = one(matches(fn.body, expr(`${entry}.summary??null`), true), 'local row summary');
+    const binding = one(nodes(fn.body, node => node.type === 'VariableDeclarator' && node.init === fallback.node, true), 'local summary binding');
+    const resolved = one(matches(fn.body, expr(`$store($selector,$key)??${id(binding.id)}`), true), 'resolved local summary');
+    const summary = one(nodes(fn.body, node => node.type === 'VariableDeclarator' && node.init === resolved.node, true), 'resolved local summary binding');
+    if (summary.end >= terminal.start) throw new Error('Summary is unavailable at local row boundary');
+    return definition(bytes, [point(source, fn, 'final local row display', [insertion(terminal.start,
+      `\n${visibleSource}\nif(!codexScopePlsVisible({kind:"local",conversationId:${entry}.conversationId},${id(summary.id)},codexScopePlsReadViewScope(document)))return null;\n`)])]);
+  }
+  const row = switched[0];
   const entry = id(row.captures.$entry);
   const slots = Array.from({ length: 6 }, (_, index) => row.captures[`$s${index}`].value);
   if (!slots.every((value, index) => Number.isInteger(value) && value === slots[0] + index)) throw new Error('Unrecognized final row cache slots');
@@ -134,6 +161,7 @@ function appDefinition(bytes) {
 
 const mergedPatternSource = 'function $merge($tasks,$locals,$env){let $worktrees=$getWorktrees(),$pending=$atom($pendingAtom),$ids=(0,$react.useMemo)(()=>$locals.map($row=>$row.id),[$locals]),$clients=$select($clientAtom,$ids),$background=$getBackground(),$memo=(0,$react.useRef)(new Map);return(0,$react.useMemo)(()=>{let $entries=$reconcile($derive({tasks:$tasks,localConversations:$locals,pendingWorktrees:$worktrees,pendingThreadStarts:$pending,envForFilter:$env,threadSortKey:$sort,isBackgroundSubagentsEnabled:$background,clientThreadIdsByConversationId:$clients}),$memo.current);return $memo.current=new Map($entries.map($entry=>[$entry.key,$entry])),$entries},[$tasks,$env,$clients,$background,$locals,$worktrees,$pending])}';
 const mergedPattern = stmt(mergedPatternSource);
+const localMergedPattern = stmt('function $merge($locals){let $worktrees=$getWorktrees(),$pending=$atom($pendingAtom),$ids=(0,$react.useMemo)(()=>$locals.map($row=>$row.conversationId),[$locals]),$clients=$select($clientAtom,$ids),$background=$getBackground(),$memo=(0,$react.useRef)(new Map);return(0,$react.useMemo)(()=>{let $entries=$reconcile($derive({localConversations:$locals,pendingWorktrees:$worktrees,pendingThreadStarts:$pending,threadSortKey:$sort,isBackgroundSubagentsEnabled:$background,clientThreadIdsByConversationId:$clients}),$memo.current);return $memo.current=new Map($entries.map($entry=>[$entry.key,$entry])),$entries},[$clients,$background,$locals,$worktrees,$pending])}');
 
 function cacheGuard(fn, node, cache, edits, source) {
   const branch = one(nodes(fn.body, candidate => candidate.type === 'ConditionalExpression' &&
@@ -150,6 +178,11 @@ function headerDefinition(bytes) {
   const mergedVariants = ['id', 'conversationId'].flatMap(key =>
     matches(tree, key === 'id' ? mergedPattern : stmt(mergedPatternSource.replace('$row.id', '$row.conversationId')))
       .map(found => ({ ...found, conversationKey: key })));
+  const local = matches(tree, localMergedPattern);
+  if (local.length) {
+    one([...mergedVariants, ...local], 'derived history hook');
+    return localHeaderDefinition(bytes, source, tree, local[0]);
+  }
   const merged = one(mergedVariants, 'derived history hook');
   const react = id(merged.captures.$react), mergeName = id(merged.captures.$merge);
   const memo = merged.node.body.body.at(-1).argument;
@@ -209,7 +242,12 @@ function headerDefinition(bytes) {
   points.push(point(source, progress, 'visible progress count', [subscription(progress, reactNamespace(progress)), replacement(count.node,
     `(${scopeName}==null||${scopeName}.showCloudChats?${id(count.captures.$cloud)}.length:0)+${localCount}`)]));
 
-  const inline = functionWithProps(tree, ['mergedTasks', 'tasksQuery']);
+  points.push(inlineHistoryPoint(source, tree, react, ['mergedTasks', 'tasksQuery']));
+  return definition(bytes, points);
+}
+function inlineHistoryPoint(source, tree, react, props) {
+  const inline = functionWithProps(tree, props, fn => matches(fn.body, expr('$rows=$preview.map($callback)'), true)
+    .some(found => found.captures.$callback.type === 'Identifier'));
   const rendered = one(matches(inline.body, expr('$rows=$preview.map($callback)'), true), 'inline row map');
   id(rendered.captures.$callback);
   const branch = one(nodes(inline.body, node => node.type === 'IfStatement' && node.consequent.start <= rendered.node.start &&
@@ -218,7 +256,44 @@ function headerDefinition(bytes) {
     .map(found => id(found.captures.$jsx)))], 'inline render namespace');
   const inlineEdits = [subscription(inline, 'codexScopePlsInlineReact()'), insertion(branch.end,
     `;${id(rendered.captures.$rows)}=codexScopePlsGroupHistoryRows(${id(rendered.captures.$preview)},${id(rendered.captures.$rows)},${jsx},${scopeName});`)];
-  points.push(point(source, inline, 'inline folder sections', inlineEdits, `function codexScopePlsInlineReact(){return ${react}}\n`));
+  return point(source, inline, 'inline folder sections', inlineEdits, `function codexScopePlsInlineReact(){return ${react}}\n`);
+}
+function localHeaderDefinition(bytes, source, tree, merged) {
+  const react = id(merged.captures.$react), mergeName = id(merged.captures.$merge);
+  const memo = merged.node.body.body.at(-1).argument;
+  const output = memo.arguments[0].body.body.at(-1).argument.expressions.at(-1);
+  const points = [point(source, merged.node, 'local history before preview and counts', [
+    subscription(merged.node, react), replacement(output, `codexScopePlsHistoryEntries(${text(source, output)},${scopeName})`),
+    insertion(memo.arguments[1].end - 1, `,${scopeName}`)
+  ])];
+  const menu = functionWithProps(tree, ['localConversations', 'onClose', 'autoFocusSearch']);
+  const locals = propertyBinding(menu, 'localConversations');
+  one(matches(menu.body, expr(`${mergeName}(${locals})`), true), 'local menu history source');
+  const rows = one(matches(menu.body, expr('$rows.map($row=>(0,$jsx.jsx)($component,{item:$row,isActive:$row.kind===`local`&&$active===($row.pendingThreadStart?.clientThreadId??$row.conversation?.conversationId),onClose:$close,onActiveArchiveStart:$archive},$row.key))'), true), 'local menu row map');
+  const cache = cacheInfo(menu), edits = [subscription(menu, reactNamespace(menu))];
+  edits.push(replacement(rows.node, `codexScopePlsGroupHistoryRows(${id(rows.captures.$rows)},${text(source, rows.node)},${id(rows.captures.$jsx)},${scopeName})`));
+  cacheGuard(menu, rows.node, cache, edits, source);
+  edits.push(replacement(cache.size, String(cache.next)));
+  points.push(point(source, menu, 'local history menu and grouping', edits));
+
+  const progress = one(nodes(tree, node => node.type === 'FunctionDeclaration' &&
+    nodes(node.body, item => item.type === 'Property' && item.key.name === 'id' &&
+      (item.value.value === 'codex.recentTasksMenu.count' || item.value.quasis?.[0]?.value.cooked === 'codex.recentTasksMenu.count'), true).length === 1), 'local progress component');
+  const count = one(matches(progress.body, expr('$query($atom,$keys).length'), true), 'local progress count');
+  const data = one(nodes(progress.body, node => node.type === 'VariableDeclarator' && node.id.type === 'ObjectPattern' &&
+    node.id.properties.some(property => property.key?.name === 'data'), true), 'local progress summaries');
+  const summaries = id(one(data.id.properties.filter(property => property.key?.name === 'data'), 'local progress data binding').value);
+  const projector = stmt('function $project($conversation){return{hostId:$conversation.hostId,threadId:$conversation.conversationId}}');
+  const projection = one(matches(progress.body, expr(`${id(count.captures.$keys)}=$locals.map($project)`), true).filter(found =>
+    nodes(tree, node => node.type === 'FunctionDeclaration' && node.id.name === id(found.captures.$project) && match(projector, node)).length === 1), 'local progress identity projection');
+  // The projection source is a memoized alias of (loaded summaries ?? []).
+  const filtered = one(nodes(progress.body, node => node.type === 'VariableDeclarator' && node.id.name === id(projection.captures.$locals) &&
+    match(expr('$source.filter($predicate)'), node.init), true), 'local progress source filter');
+  const alias = id(filtered.init.callee.object);
+  one(matches(progress.body, expr(`${alias}=${summaries}??[]`), true), 'loaded progress summaries');
+  points.push(point(source, progress, 'visible local progress count', [subscription(progress, reactNamespace(progress)),
+    replacement(count.node, `codexScopePlsHistoryInProgress(${text(source, count.node.object)},${summaries}??[],${scopeName}).length`)]));
+  points.push(inlineHistoryPoint(source, tree, react, ['mergedTasks']));
   return definition(bytes, points);
 }
 module.exports = { hostDefinition, appDefinition, notificationDefinition, rowDefinition, headerDefinition, combineDefinitions };

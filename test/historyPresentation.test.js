@@ -55,7 +55,8 @@ function walk(node, predicate) {
     ...walk(node.props?.triggerButton, predicate)];
 }
 
-function harness({ brokenInlineReact = false, structural = !brokenInlineReact, current = false } = {}) {
+function harness({ brokenInlineReact = false, structural = !brokenInlineReact, current = false, localOnly = false } = {}) {
+  current = current || localOnly;
   const model = { mode: 'workspace', cloud: false, group: false, filter: 'recent', pending: [], worktrees: [] };
   const tag = { content: JSON.stringify({ mode: model.mode, roots: ['/a'], platform: process.platform, showCloudChats: model.cloud, groupChatsByProject: model.group }) };
   const listeners = new Map();
@@ -118,7 +119,22 @@ function harness({ brokenInlineReact = false, structural = !brokenInlineReact, c
     On: 'error', Dn: 'loading', dn: 'noSearchResults', Kt: 'empty', q: 'tooltip', re: 'spinner', ae: 'icon',
     B: 'popover', oe: 'tooltip', Ce: 'popover', Oe: 'icon', Q: sandbox.Q
   });
-  const header = fixture(current ? 'splitHeader.js' : 'headerPresentation.js');
+  if (localOnly) Object.assign(sandbox, {
+    Y: runtime.react, X: runtime.react, Jt: runtime.react,
+    vt: { c: runtime.react.c }, Ht: { c: runtime.react.c }, qt: { c: runtime.react.c },
+    yt: sandbox.Lt, Lt: sandbox.bn, Be: { error: message => assert.fail(message) },
+    Je: () => model.worktrees, g: atom => atom === 'pending' ? model.pending : null, he: 'pending', Ie: 'ids', Ae: 'updated_at', ye: () => false,
+    C: (atom, keys) => atom === 'ids' ? new Map() : atom === 'titles'
+      ? keys.map(key => ({ ...key, title: rows.find(row => row.conversationId === key.threadId)?.title }))
+      : keys.filter(key => model.inProgress?.has(key.threadId)), ut: 'progress', dt: 'titles', R: () => false,
+    Oe: id => `local:${id}`, ve: () => () => {}, d: () => ({ pathname: '/' }), $e: () => ({ cancelPendingWorktree() {} }),
+    p: () => intl, n: () => null, de: () => ({ data: rows }), Yt: 'unread', ke: close => close, qe: () => false,
+    be: (title, search) => (title ?? '').toLowerCase().includes(search), U: { Section: 'section' },
+    q: sandbox.J, f: 'message', Ve: 'worktreeRow', De: 'localRow', Xe: 'pendingRow', K: 'timestamp',
+    xt: 'search', Ut: 'mixedRow', Ot: 'noSearchResults', wt: 'empty',
+    E: () => '', h: 'tooltip', ne: 'button', ie: 'popover', Ke: 'icon', ee: 'spinner', te: 'icon', v: 'clock'
+  });
+  const header = fixture(localOnly ? 'localOnlyHeader.js' : current ? 'splitHeader.js' : 'headerPresentation.js');
   const headerPatch = structural ? headerDefinition(header) : { ...bundle.presentation.additionalTargets[0], originalHash: sha256(header) };
   if (brokenInlineReact) {
     headerPatch.points = headerPatch.points.map(point => point.name !== 'inline history group subscription' ? point : {
@@ -135,9 +151,9 @@ function harness({ brokenInlineReact = false, structural = !brokenInlineReact, c
     const scope = { mode: model.mode, roots: ['/a'], platform: process.platform, showCloudChats: model.cloud, groupChatsByProject: model.group };
     assert.equal(sandbox.e0e({ origin: window.location.origin, source: null, data: { type: 'codex-scope-pls-view-scope', scope } }, window), null);
   };
-  const merged = () => runtime.render(current ? sandbox._n : sandbox.fn, tasks, rows, null);
-  const preview = () => runtime.render(current ? sandbox.At : sandbox.Et, { mergedTasks: merged(), tasksQuery: query });
-  const menu = () => runtime.render(current ? sandbox.Cn : sandbox.vn, { cloudtasksQuery: query, localConversations: rows, onClose() {} });
+  const merged = () => localOnly ? runtime.render(sandbox.Pt, rows) : runtime.render(current ? sandbox._n : sandbox.fn, tasks, rows, null);
+  const preview = () => runtime.render(localOnly ? sandbox.pt : current ? sandbox.At : sandbox.Et, { mergedTasks: merged(), tasksQuery: query });
+  const menu = () => runtime.render(localOnly ? sandbox.zt : current ? sandbox.Cn : sandbox.vn, { cloudtasksQuery: query, localConversations: rows, onClose() {} });
   return { model, rows, tasks, sandbox, runtime, update, merged, preview, menu, tag, listeners, document, window };
 }
 
@@ -182,6 +198,30 @@ test('current progress identity queries count only visible loaded conversations'
   assert.equal(label(), 1);
   h.model.mode = 'all'; h.update(); assert.equal(label(), 3);
   h.model.mode = 'workspace'; h.model.cloud = true; h.update(); assert.equal(label(), 2);
+});
+
+test('local-only header scopes preview, totals, search, grouping and progress with live preferences', () => {
+  const h = harness({ localOnly: true });
+  h.model.inProgress = new Set(['a0', 'b0', 'b1']);
+  assert.deepEqual(walk(h.preview(), node => node.type === 'localRow').map(node => node.props.conversationId), ['a0', 'a1', 'a2']);
+  assert.equal(walk(h.preview(), node => node.props?.id === 'header.recentTasks.seeAll')[0].props.values.total, 4);
+  assert.equal(walk(h.menu(), node => node.type === 'mixedRow').length, 4);
+  walk(h.menu(), node => node.type === 'search')[0].props.onQueryChange('a2');
+  assert.deepEqual(walk(h.menu(), node => node.type === 'mixedRow').map(node => node.props.item.conversation.conversationId), ['a2']);
+  walk(h.menu(), node => node.type === 'search')[0].props.onQueryChange('');
+  const count = () => walk(h.runtime.render(h.sandbox.Gt), node =>
+    node.props?.['aria-label']?.message === 'codex.recentTasksMenu.trigger')[0].props['aria-label'].count;
+  assert.equal(count(), 1);
+  h.model.mode = 'all'; h.model.group = true; h.update();
+  assert.equal(count(), 3);
+  assert.deepEqual(walk(h.menu(), node => node.type === 'h3').map(node => node.props.children), ['/b', '/a']);
+  assert.equal(walk(h.menu(), node => node.type === 'mixedRow').length, 9);
+  assert.equal(walk(h.preview(), node => node.type === 'localRow').length, 3);
+  h.model.group = false; h.update();
+  assert.equal(walk(h.menu(), node => node.type === 'h3').length, 0);
+  h.model.mode = 'workspace'; h.update();
+  assert.equal(count(), 1);
+  assert.equal(h.rows.length, 9);
 });
 
 test('inline preview resolves React outside its shadowing locals, including the empty startup state', () => {

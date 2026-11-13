@@ -408,6 +408,12 @@ identity field, active remote chat expression and progress identity queries.
 Progress counts resolve cwd from the already loaded conversation summaries;
 backend queries and their results remain unchanged.
 
+Version 0.3.11 adds the inspected 26.1111.21308 local-only row and history
+adapters. Their exact terminal renderer, summary lookup, derived-list hook and
+progress identity projection must all match before patching. The display guard
+runs after existing hooks. Legacy remote/local adapters remain available.
+Warnings show only the first three candidate failures plus the remaining count.
+
 ## Compatibility monitoring
 
 The daily Marketplace watcher follows the same import graph and uses the same

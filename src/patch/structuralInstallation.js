@@ -24,7 +24,9 @@ function combine(profile, targets, extra) {
 }
 const roleChecks = [
   { role: 'notifications', candidate: bytes => bytes.includes('chunked-message-ack'), build: notificationDefinition },
-  { role: 'rows', candidate: bytes => bytes.includes('summary') && /\bswitch\s*\(/.test(bytes.toString('utf8')), build: rowDefinition },
+  // Both reviewed row adapters require this fallback. Avoid parsing unrelated
+  // modules merely because they mention conversations or contain a switch.
+  { role: 'rows', candidate: bytes => bytes.includes('summary') && /\.summary\s*\?\?\s*null/.test(bytes.toString('utf8')), build: rowDefinition },
   { role: 'history', candidate: bytes => bytes.includes('pendingThreadStarts'), build: headerDefinition }
 ];
 function roleMatches(assets, cache = new Map()) {
@@ -62,7 +64,10 @@ function recognize(host, assets) {
   const { roles, failures } = roleMatches(assets);
   const targets = new Map();
   for (const [role, matches] of roles) {
-    if (matches.length !== 1) throw new Error(`Unrecognized Codex ${role} role (matched ${matches.length}). ${failures.get(role).join('; ')}`);
+    if (matches.length !== 1) {
+      const errors = failures.get(role), shown = errors.slice(0, 3);
+      throw new Error(`Unrecognized Codex ${role} role (matched ${matches.length}). ${shown.join('; ')}${errors.length > shown.length ? `; ${errors.length - shown.length} more candidate failures` : ''}`);
+    }
     const match = matches[0];
     if (!targets.has(match.relativePath)) targets.set(match.relativePath, { bytes: match.bytes, definitions: [], roles: [] });
     targets.get(match.relativePath).definitions.push(match.definition);
