@@ -71,42 +71,82 @@ function hostDefinition(bytes) {
   const method = name => one(nodes(tree, node => node.type === 'MethodDefinition' && node.key.name === name &&
     !node.static && !node.computed && node.kind === 'method'), name);
   const meta = method('webviewMetaTags');
-  const metaPattern = stmt('let $tags=[],$panel=this.findPanelByWebview($view);');
-  const metaMatch = match(metaPattern, meta.value.body.body[0]);
-  if (!metaMatch || meta.value.async || meta.value.params.length !== 1 || id(meta.value.params[0]) !== id(metaMatch.$view)) throw new Error('Unrecognized webview metadata structure');
+  if (meta.value.async || meta.value.generator || !nodes(meta.value.body, node => node.type === 'ReturnStatement', true).length) {
+    throw new Error('Unrecognized webview metadata interface');
+  }
   // Own HTML escaping removes the dependency on a vendor minified helper.
   const tag = '`<meta name="codex-scope-pls-view" content="${JSON.stringify(codexScopePlsViewScope(require("vscode"))).replace(/[&<>\"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",\'"\':"&quot;"})[c])}">`';
-  const points = [point(source, meta, 'workspace metadata', [
-    insertion(meta.value.body.start + 1, `\n${scopeSource}\n`),
-    replacement(meta.value.body.body[0].declarations[0].init, `[${tag}]`)
-  ])];
-  const nativePattern = parse('class Host{async provideChatSessionItems($request,$token){return(await this.requestThreadList($request)).data.map($row=>{let $summary=this.toThreadListSummary($row);return{summary:$summary,item:this.toChatSessionItem($summary)}})}}').body[0].body.body[0];
-  const native = one(matches(tree, nativePattern), 'native session display structure').node;
-  const data = native.value.body.body[0].argument.callee.object;
-  points.push(point(source, native, 'native session display', [
-    insertion(native.value.body.start + 1, `\n${scopeSource}${visibleSource}\nconst ${scopeName}=codexScopePlsViewScope(require("vscode"));\n`),
-    replacement(data, `${text(source, data)}.filter(codexScopePlsRow=>codexScopePlsVisible({kind:"local"},codexScopePlsRow,${scopeName}))`)
-  ]));
+  // Keep vendor control flow intact. Metadata is an HTML string interface, not
+  // a particular array initialization or HTML-escape helper implementation.
+  const original = source.slice(meta.value.body.start + 1, meta.value.body.end - 1);
+  const points = [point(source, meta, 'workspace metadata', [replacement(meta.value.body,
+    `{\n${scopeSource}\nconst codexScopePlsOriginal=(()=>{${original}})();return typeof codexScopePlsOriginal==="string"?${tag}+codexScopePlsOriginal:codexScopePlsOriginal;}`)])];
+  let native;
+  try { native = nativePickerPoint(source, tree); }
+  catch { /* Optional picker additions must not prevent safe sidebar filtering. */ }
+  if (native) points.push(native);
   const initialize = method('initializeWebview');
   const params = initialize.value.params;
-  const initPattern = stmt('let $root=$vscode.Uri.joinPath(this.extensionUri,"webview");');
-  if (!initialize.value.async || params.length !== 4 || !match(initPattern, initialize.value.body.body[0])) throw new Error('Unrecognized webview initialization structure');
+  if (!initialize.value.async || params.length < 3 || params.slice(0, 3).some(param => param.type !== 'Identifier')) {
+    throw new Error('Unrecognized webview initialization interface');
+  }
   points.push(point(source, initialize, 'live preferences', [insertion(initialize.value.body.start + 1,
     `\n${scopeSource}${helper('viewUpdates.js')}\nconst codexScopePlsUpdates=codexScopePlsSubscribeView(require("vscode"),${id(params[0])},${id(params[2])});this.subscriptions.push(codexScopePlsUpdates,codexScopePlsUpdates.viewDisposal);\n`)]));
-  return definition(bytes, points);
+  return { ...definition(bytes, points), nativeSessionDisplay: native ? 'filtered' : 'stock' };
 }
 
-// The whole origin/chunk parser must agree, including acknowledgement order.
-// Only identifier spelling and string quoting may vary.
-const messagePattern = stmt('function $parse($event,$window){let $source=$event.source,$origin=$window.location.origin;if($event.origin!==$origin||$source===$window&&$origin!==``&&$origin!==$nullOrigin&&$event.origin!==$origin)return null;let $data=$event.data;if($chunk($data)){let $received=$receiver($window).receive($data);if($received.type!==`passthrough`&&$received.acknowledgement!=null&&$api.postMessage({type:`chunked-message-ack`,transferId:$received.acknowledgement.transferId,sequence:$received.acknowledgement.sequence}),$received.type===`pending`)return null;$data=$received.message}return typeof $data!=`object`||!$data||!$valid($data)?null:$data}');
+function nativePickerPoint(source, tree) {
+  const candidates = [];
+  for (const body of nodes(tree, node => node.type === 'ClassBody')) {
+    const roots = body.body.filter(node => node.type === 'MethodDefinition' && node.key.name === 'provideChatSessionItems');
+    const names = new Set(['provideChatSessionItems']);
+    for (const root of roots) for (const call of nodes(root.value.body, node => node.type === 'CallExpression' &&
+      node.callee.type === 'MemberExpression' && node.callee.object.type === 'ThisExpression')) names.add(call.callee.property.name);
+    if (!roots.length) continue;
+    for (const method of body.body.filter(node => node.type === 'MethodDefinition' && !node.static && !node.computed && names.has(node.key.name))) {
+      const returns = nodes(method.value.body, node => node.type === 'ReturnStatement', true);
+      for (const statement of returns) {
+        const map = statement.argument, callback = map?.arguments?.[0], data = map?.callee?.object;
+        if (map?.type !== 'CallExpression' || map.callee.type !== 'MemberExpression' || map.callee.property.name !== 'map' ||
+          data?.type !== 'MemberExpression' || data.property.name !== 'data' || !['ArrowFunctionExpression', 'FunctionExpression'].includes(callback?.type)) continue;
+        const projected = callback.body.type === 'ObjectExpression' ? [callback.body] :
+          nodes(callback.body, node => node.type === 'ReturnStatement', true).map(node => node.argument);
+        if (!projected.some(object => object?.type === 'ObjectExpression' && object.properties.some(p => p.key?.name === 'summary') &&
+          object.properties.some(p => p.key?.name === 'item' && p.value.type === 'CallExpression' &&
+            p.value.callee.type === 'MemberExpression' && p.value.callee.object.type === 'ThisExpression' && p.value.callee.property.name === 'toChatSessionItem'))) continue;
+        candidates.push({ method, data });
+      }
+    }
+  }
+  // The picker is supplementary. Unknown or ambiguous picker code stays stock;
+  // its loader implementation must never disable the required sidebar filter.
+  if (candidates.length !== 1) return null;
+  const { method, data } = candidates[0];
+  return point(source, method, 'native session display', [
+    insertion(method.value.body.start + 1, `\n${scopeSource}${visibleSource}\nconst ${scopeName}=codexScopePlsViewScope(require("vscode"));\n`),
+    replacement(data, `${text(source, data)}.filter(codexScopePlsRow=>codexScopePlsVisible({kind:"local"},codexScopePlsRow,${scopeName}))`)
+  ]);
+}
+
+// Recognize display interfaces; preserve vendor internals and validate only the
+// bindings needed by our additions.
 const rowPattern = stmt('switch($entry.kind){case`remote`:{let $r;return $cache[$s0]!==$entry||$cache[$s1]!==$remote?($r=$remote($entry),$cache[$s0]=$entry,$cache[$s1]=$remote,$cache[$s2]=$r):$r=$cache[$s2],$r}case`local`:{let $l;return $cache[$s3]!==$entry||$cache[$s4]!==$local?($l=$local($entry),$cache[$s3]=$entry,$cache[$s4]=$local,$cache[$s5]=$l):$l=$cache[$s5],$l}}');
 const localRowReturn = stmt('return $cache[$s0]!==$entry||$cache[$s1]!==$render?($result=$render($entry),$cache[$s0]=$entry,$cache[$s1]=$render,$cache[$s2]=$result):$result=$cache[$s2],$result;');
 function notificationDefinition(bytes) {
   const { source, tree } = sourceTree(bytes);
-  const message = one(matches(tree, messagePattern), 'origin and chunk parser');
-  const last = message.node.body.body.at(-1);
-  const points = [point(source, message.node, 'display preference notification', [insertion(last.start,
-    `\n${visibleSource}${helper('viewNotification.js')}\nif(codexScopePlsAcceptViewScope(${id(message.captures.$data)},document,${id(message.captures.$window)}))return null;\n`)])];
+  const parser = one(nodes(tree, node => node.type === 'FunctionDeclaration' && !node.async && !node.generator &&
+    node.params.length === 2 && node.params.every(param => param.type === 'Identifier')).filter(fn => {
+    const [event, view] = fn.params.map(id);
+    return matches(fn.body, expr(`${event}.data`), true).length > 0 && matches(fn.body, expr(`${view}.location.origin`), true).length > 0 &&
+      nodes(fn.body, node => node.type === 'Property' && node.key?.name === 'type' &&
+        (node.value.value === 'chunked-message-ack' || node.value.quasis?.[0]?.value.cooked === 'chunked-message-ack')).length === 1;
+  }), 'webview message parser interface');
+  const [event, view] = parser.params.map(id);
+  const original = source.slice(parser.body.start + 1, parser.body.end - 1);
+  // Let the stock parser finish ALL origin, chunk and type checks first. Only
+  // consume our accepted message; additionally enforce our own same-origin rule.
+  const points = [point(source, parser, 'display preference notification', [replacement(parser.body,
+    `{const codexScopePlsMessage=(()=>{${original}})();\n${visibleSource}${helper('viewNotification.js')}\nif(${event}.origin===${view}.location.origin&&codexScopePlsMessage!=null&&codexScopePlsAcceptViewScope(codexScopePlsMessage,document,${view}))return null;return codexScopePlsMessage;}`)])];
   return definition(bytes, points);
 }
 function rowDefinition(bytes) {
@@ -131,8 +171,23 @@ function rowDefinition(bytes) {
       slots[0] < 0 || slots[2] >= cache.size.value) throw new Error('Invalid local row cache boundary');
     const fallback = one(matches(fn.body, expr(`${entry}.summary??null`), true), 'local row summary');
     const binding = one(nodes(fn.body, node => node.type === 'VariableDeclarator' && node.init === fallback.node, true), 'local summary binding');
-    const resolved = one(matches(fn.body, expr(`$store($selector,$key)??${id(binding.id)}`), true), 'resolved local summary');
-    const summary = one(nodes(fn.body, node => node.type === 'VariableDeclarator' && node.init === resolved.node, true), 'resolved local summary binding');
+    const resolved = matches(fn.body, expr(`$store($selector,$key)??${id(binding.id)}`), true);
+    let summary = binding;
+    if (resolved.length === 1) summary = one(nodes(fn.body, node => node.type === 'VariableDeclarator' && node.init === resolved[0].node, true), 'resolved local summary binding');
+    else {
+      // Some releases now render entry.summary directly. Follow the rendered
+      // data instead of requiring a particular selector/helper call chain.
+      const renderers = nodes(fn.body, node => ['FunctionExpression', 'ArrowFunctionExpression'].includes(node.type) &&
+        node.params.length === 1 && node.params[0].type === 'Identifier').filter(render => {
+        const data = matches(render.body, expr(`${id(render.params[0])}.summary??null`), true);
+        if (data.length !== 1) return false;
+        const bound = nodes(render.body, node => node.type === 'VariableDeclarator' && node.init === data[0].node, true);
+        return bound.length === 1 && nodes(render.body, node => node.type === 'Property' && node.key?.name === 'threadSummary' &&
+          node.value.name === id(bound[0].id), true).length === 1;
+      });
+      one(renderers, 'rendered local summary');
+      if (resolved.length > 1) throw new Error('Ambiguous local summary lookup');
+    }
     if (summary.end >= terminal.start) throw new Error('Summary is unavailable at local row boundary');
     return definition(bytes, [point(source, fn, 'final local row display', [insertion(terminal.start,
       `\n${visibleSource}\nif(!codexScopePlsVisible({kind:"local",conversationId:${entry}.conversationId},${id(summary.id)},codexScopePlsReadViewScope(document)))return null;\n`)])]);

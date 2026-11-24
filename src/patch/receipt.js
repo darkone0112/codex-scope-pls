@@ -13,6 +13,9 @@ function validate(receipt, version) {
     receipt.targets.some(target => !target || typeof target !== 'object' || Array.isArray(target))) {
     throw new Error('Invalid installation receipt');
   }
+  if (receipt.nativeSessionDisplay !== undefined && !['filtered', 'stock'].includes(receipt.nativeSessionDisplay)) {
+    throw new Error('Invalid native session display status');
+  }
   const paths = receipt.targets.map(target => target.relativePath);
   const legacyPaths = receipt.schema !== 1 || receipt.targets.length === 3 &&
     /^webview\/assets\/app-initial-[a-f0-9]+\.js$/.test(paths[1]) && /^webview\/assets\/header-[a-f0-9]+\.js$/.test(paths[2]);

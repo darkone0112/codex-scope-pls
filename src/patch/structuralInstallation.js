@@ -91,7 +91,7 @@ async function structuralInstallation(root, profile, restoration = false) {
     if (restoration) {
       const targets = receipt.value.targets.map(target => ({ ...target, points: [], currentPatchedHashes: target.patchedHashes,
         previousPatchedHashes: [], receiptOnly: true }));
-      return combine(profile, targets);
+      return combine(profile, targets, { nativeSessionDisplay: receipt.value.nativeSessionDisplay });
     }
     const paths = receipt.value.targets.map(target => target.relativePath);
     const targets = recognize(originals[0], originals.slice(1).map((bytes, index) => ({ bytes, relativePath: paths[index + 1] })));
@@ -112,6 +112,7 @@ function withReceipt(profile, targets, previous) {
     roles: target.roles,
     patchedHashes: [...new Set([...target.currentPatchedHashes, ...target.previousPatchedHashes])]
   })) };
+  value.nativeSessionDisplay = targets[0].nativeSessionDisplay;
   return combine(profile, targets, { receipt: { value, previous } });
 }
 module.exports = { structuralInstallation, recognize, discoverRoleModules };

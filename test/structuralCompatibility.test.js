@@ -115,15 +115,15 @@ test('unknown modifications, malformed receipts, unsafe paths and missing/corrup
   }
 });
 
-test('a broken last target, duplicate asset or changed origin check leaves every file untouched', async t => {
-  for (const fault of ['header', 'duplicate', 'origin', 'syntax', 'symlink']) {
+test('a broken last target, duplicate asset or missing parser interface leaves every file untouched', async t => {
+  for (const fault of ['header', 'duplicate', 'parser', 'syntax', 'symlink']) {
     const f = await installation(t);
     if (fault === 'header') await fs.writeFile(path.join(f.root, paths[2]), f.originals[2].toString().replace('pendingThreadStarts:', 'changedPendingThreads:'));
     if (fault === 'duplicate') {
       await fs.writeFile(path.join(f.root, 'webview/assets/header-aabbcc.js'), f.originals[2]);
       await fs.appendFile(path.join(f.root, 'webview/assets/entry.js'), 'import "./header-aabbcc.js";');
     }
-    if (fault === 'origin') await fs.writeFile(path.join(f.root, paths[1]), f.originals[1].toString().replace('e.origin!==r', 'e.origin===r'));
+    if (fault === 'parser') await fs.writeFile(path.join(f.root, paths[1]), f.originals[1].toString().replace('t.location.origin', 't.location.host'));
     if (fault === 'syntax') await fs.appendFile(path.join(f.root, paths[0]), '{broken');
     if (fault === 'symlink') {
       await fs.rename(path.join(f.root, paths[2]), path.join(f.root, 'original-header.js'));

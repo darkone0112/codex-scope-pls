@@ -203,10 +203,11 @@ IPC notifications and session restoration unchanged.
 The patch recognizes four roles, allowing the webview roles to share a file or
 occupy separate files:
 
-* `out/extension.js`: workspace/settings metadata, live preference delivery and
-  the native session picker's display results.
-* Notifications: our display message is consumed after the original webview
-  origin and chunk checks.
+* `out/extension.js`: workspace/settings metadata and live preference delivery.
+  The native session picker's display results are also filtered when its projection
+  is recognized. An unknown or ambiguous picker stays stock without blocking sidebar filtering.
+* Notifications: the original webview parser runs unchanged first; our display
+  message is consumed only after native validation and an additional same-origin check.
 * Rows: the final chat-row renderer filters only its displayed output.
 * History: derived entries are scoped before preview selection, counts, tabs
   and search; optional folder sections wrap rendered rows.
@@ -236,6 +237,12 @@ identifier relationships and compiler-cache layout. Asset filenames and generate
 identifiers are discovered from that installation. Unrelated edits elsewhere in
 the bundles can pass without a Scope Pls update. If a required structure is
 missing or ambiguous, no bundle is changed.
+
+Metadata wrapping preserves the native method's body. Picker recognition follows
+the provider to its display projection rather than matching its loader or request
+implementation. Row filtering uses the summary supplied to the renderer, allowing
+both a live summary lookup and direct entry summaries. These boundaries tolerate
+surrounding code reorganization without requiring the whole function to match.
 
 Exact legacy profiles remain available for migration and restoration, including
 removal of the retired 0.3.5 submission patch. New structural installations touch
@@ -291,7 +298,7 @@ Before changing anything, the extension verifies:
 * the local platform and workspace constraints;
 * ordinary, unlinked target files and non-symlinked directories;
 * exactly one recognized instance of each required role in the inspected startup graph;
-* the original message-origin and chunk handling sequence;
+* the message-parser interface, preserving native validation before our handler;
 * the identifier relationships and cache layout used by each patch;
 * every exact replacement count and the generated output's syntax;
 * each original backup and any existing installation receipt.
@@ -414,6 +421,12 @@ progress identity projection must all match before patching. The display guard
 runs after existing hooks. Legacy remote/local adapters remain available.
 Warnings show only the first three candidate failures plus the remaining count.
 
+Version 0.3.12 supports the inspected 26.1117.41037 loader, parser and direct-summary
+renderer. The optional native picker can no longer disable sidebar filtering.
+Metadata and message handling preserve native implementations rather than requiring
+their internal statement sequences. Diagnostics still reports the installation
+path and hash when compatibility recognition fails.
+
 ## Compatibility monitoring
 
 The daily Marketplace watcher follows the same import graph and uses the same
@@ -440,6 +453,7 @@ Target extension path
 Target file SHA-256
 Patch status
 Compatibility status
+Native session picker filtering status
 Last patch/restore result
 ```
 

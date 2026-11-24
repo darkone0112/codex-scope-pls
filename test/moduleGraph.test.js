@@ -12,6 +12,7 @@ const { changeAll } = require('../src/patch/patcher');
 const { backupPath } = require('../src/patch/backup');
 const { receiptPath, validate } = require('../src/patch/receipt');
 const { assessPackage } = require('../scripts/check-codex-compatibility');
+const { diagnostics } = require('../src/diagnostics');
 const profiles = require('../src/patch/definitions');
 const { parse } = require('../src/patch/structure');
 
@@ -166,4 +167,29 @@ test('a missing backup in a split installation refuses recovery without replacin
   await fs.unlink(backupPath(targets.at(-1).target, targets.at(-1).definition));
   for (const restore of [false, true]) await assert.rejects(installed.resolve(restore));
   assert.deepEqual(await Promise.all(targets.map(item => fs.readFile(item.target))), before);
+});
+
+test('unknown native picker does not block sidebar installation and diagnostics survives an integrity failure', async t => {
+  const { files } = await layout('combined');
+  const source = files.get('out/extension.js');
+  const method = parse(source).body[0].body.body.find(node => node.key.name === 'provideChatSessionItems');
+  files.set('out/extension.js', source.slice(0, method.start) + 'async provideChatSessionItems(){return []}' + source.slice(method.end));
+  const installed = await temporaryInstallation(t, files);
+  const targets = await installed.resolve();
+  assert.equal(targets[0].definition.nativeSessionDisplay, 'stock');
+  await changeAll(targets, 'apply');
+  const receipt = JSON.parse(await fs.readFile(receiptPath(targets[0].target), 'utf8'));
+  assert.equal(receipt.nativeSessionDisplay, 'stock');
+  const vscode = { extensions: { getExtension: () => ({ extensionPath: installed.root, packageJSON: { version: installed.profile.version } }) },
+    workspace: { workspaceFolders: [], getConfiguration: () => ({ inspect: () => ({}), get: (_key, fallback) => fallback }) } };
+  const context = { extension: { packageJSON: { version: '0.3.12' } }, globalState: { get: (_key, fallback) => fallback } };
+  const valid = await diagnostics(vscode, context, 'applied');
+  assert.equal(valid.nativeSessionDisplay, 'stock');
+  assert.equal(valid.patched, true);
+  assert.equal(valid.displayTargets.length, 3);
+  await fs.appendFile(targets[0].target, '\n// unknown bytes');
+  const failed = await diagnostics(vscode, context, 'failed');
+  assert.equal(failed.target, targets[0].target);
+  assert.equal(failed.currentSHA256, sha256(await fs.readFile(targets[0].target)));
+  assert.match(failed.compatibility, /SHA-256 mismatch/);
 });

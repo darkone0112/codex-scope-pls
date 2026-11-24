@@ -10,22 +10,28 @@ function samePath(left, right) {
   return process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right;
 }
 async function locate(vscode, restoration = false, profiles = definitions) {
-  const extension = vscode.extensions.getExtension('openai.chatgpt');
-  if (!extension) throw new Error('OpenAI Codex extension is not installed in this host');
-  const profile = selectDefinition(extension.packageJSON.version, process.platform, process.arch, profiles);
+  const info = await inspectInstallation(vscode, profiles);
   if (!restoration && (vscode.env.remoteName || vscode.workspace.workspaceFolders?.some(f => f.uri.scheme !== 'file'))) {
     throw new Error('Only local file workspaces are supported by this compatibility definition');
   }
   if (!restoration && vscode.workspace.getConfiguration('chatgpt').get('cliExecutable')) {
     throw new Error('Custom Codex CLI is not supported by this compatibility definition');
   }
+  const definition = await locateInstallation(info.root, info.profile, restoration, info.currentHash);
+  return { target: info.target, definition, currentHash: info.currentHash };
+}
+
+// File identity and basic diagnostics must not depend on a patch matcher.
+async function inspectInstallation(vscode, profiles = definitions) {
+  const extension = vscode.extensions.getExtension('openai.chatgpt');
+  if (!extension) throw new Error('OpenAI Codex extension is not installed in this host');
+  const profile = selectDefinition(extension.packageJSON.version, process.platform, process.arch, profiles);
   const root = await fs.realpath(extension.extensionPath);
   const target = path.join(root, profile.relativePath);
   if (!samePath(await fs.realpath(path.dirname(target)), path.dirname(target))) throw new Error('Refusing symlinked bundle directory');
   const current = await readRegular(target);
   const currentHash = sha256(current);
-  const definition = await locateInstallation(root, profile, restoration, currentHash);
-  return { target, definition, currentHash };
+  return { root, profile, target, currentHash };
 }
 
 async function locateInstallation(root, profile, restoration = false, currentHash) {
@@ -72,4 +78,4 @@ async function installationTargets(target, definition, restoration = false) {
   }
   return targets;
 }
-module.exports = { locate, installationTargets, locateInstallation };
+module.exports = { locate, installationTargets, locateInstallation, inspectInstallation };

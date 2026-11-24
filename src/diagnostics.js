@@ -1,6 +1,6 @@
 'use strict';
 const { inspect } = require('./patch/patcher');
-const { locate, installationTargets } = require('./codexLocator');
+const { inspectInstallation, locateInstallation, installationTargets } = require('./codexLocator');
 const { readRegular } = require('./patch/backup');
 const { sha256, count } = require('./patch/integrity');
 async function diagnostics(vscode, context, lastResult) {
@@ -17,8 +17,11 @@ async function diagnostics(vscode, context, lastResult) {
     autoApply: context.globalState.get('autoApply', true), lastResult
   };
   try {
-    const { target, definition } = await locate(vscode, true);
+    const { root, profile, target, currentHash } = await inspectInstallation(vscode);
     result.target = target;
+    result.currentSHA256 = currentHash;
+    const definition = await locateInstallation(root, profile, true, currentHash);
+    result.nativeSessionDisplay = definition.nativeSessionDisplay || (definition.structural ? 'not recorded by earlier version' : 'legacy profile');
     result.bundleCompatibility = definition.structural ? 'recognized structure / local integrity receipt' : 'exact reviewed SHA-256 match';
     result.versionRecognition = definition.structural ? 'version-independent structure' : definition.knownVersion ? 'reviewed version' : 'unlisted version with reviewed bundle';
     result.originalSHA256 = definition.originalHash;
